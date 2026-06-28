@@ -39,6 +39,7 @@ services:
       - DB_DSN=/data/admin.db
       - STORAGE_CACHE_TYPE=memory
       - PROMETHEUS_SERVER_URL=http://gateway:8000
+      - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
     volumes:
       - admin-data:/data
     depends_on:
@@ -57,6 +58,10 @@ services:
       - DB_DRIVER=sqlite
       - DB_DSN=/data/gateway.db
       - APP_CONF=/config/default.yml
+      - ADMIN_SERVER_URL=http://admin:8040
+      - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
+      - GATEWAY_CONFIG_SOURCE=${GATEWAY_CONFIG_SOURCE:-http}
+      - GATEWAY_STATE_STORE=${GATEWAY_STATE_STORE:-memory}
     volumes:
       - gateway-data:/data
       - ./gateway/config:/config:ro

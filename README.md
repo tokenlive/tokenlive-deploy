@@ -175,21 +175,32 @@ your-domain.com {
 docker compose restart
 ```
 
-### Enabling Redis
+### Configuration & State Storage Modes
 
-By default, an in-memory mode is used. Enabling Redis provides:
+This deployment supports two running modes:
 
-- Multi-instance deployment support
-- Hot configuration synchronization
-- Persistent rate limiting and circuit breaker state
+1. **Default Mode (No Redis)**:
+   * **Dynamic Configuration Sync**: The Gateway automatically polls the Admin Console via **HTTP Polling** to fetch the latest models, endpoints, policies, and API keys, and hot-reloads them in memory.
+   * **Runtime State**: Rate limiting, circuit breaker, and token settlement states are stored in the Gateway's local memory.
+   * **Use Case**: Lightweight, single-instance deployment with zero external dependencies.
 
+2. **Redis Mode (Distributed Cluster)**:
+   * **Configuration Hot-Sync**: The Gateway synchronizes configuration changes from the Admin Console in real-time via Redis Pub/Sub.
+   * **Shared State**: Multiple Gateway instances share rate limiting, circuit breaker, and quota deduction states.
+   * **Use Case**: Multi-instance horizontal scaling and high-availability clusters.
+
+#### Enabling Redis Mode
+
+1. Start with Redis:
 ```bash
 docker compose --profile with-redis up -d
 ```
 
-Add to `.env`:
-
+2. Add or update configurations in `.env`:
 ```env
+# Enable Redis Mode
+GATEWAY_CONFIG_SOURCE=redis
+GATEWAY_STATE_STORE=redis
 REDIS_ADDR=redis:6379
 ```
 
@@ -214,10 +225,12 @@ PROMETHEUS_SERVER_URL=http://prometheus:9090
 ### Redis (Optional)
 
 Enabling Redis provides support for:
+- **Admin Configuration Hot-Sync**: Real-time synchronization of policies, models, and endpoints from the Admin Console to the Gateway.
+- **Gateway Multi-instance Deployment**: Distribute load across multiple Gateway instances.
+- **Persistent State**: Persistent rate limiting, circuit breaker, and metrics.
 
-- Gateway multi-instance deployment
-- Admin configuration hot-sync
-- Persistent rate limiting and circuit breaker state
+> [!NOTE]
+> Without Redis, the Admin Console and Gateway automatically synchronize configuration and policies via internal HTTP polling (no manual setup required). The Gateway's runtime states (rate limiting, circuit breakers) are stored in local memory.
 
 ```bash
 docker compose --profile with-redis up -d
@@ -324,6 +337,12 @@ cp .env ./backup/
     └────────────────────┘         └────────────────────┘
 
 Status: ✅ Zero external dependencies, one-click start
+
+> [!WARNING]
+> **Limitations of Minimal Mode (Without Redis)**:
+> In this mode, the `Admin Console` and `Gateway API` operate independently. Because they use separate SQLite databases and have no shared state channel, any changes (such as adding models, updating endpoints, or modifying governance policies) made in the Admin Console UI **will not** be transmitted to the Gateway. The Gateway will strictly run using the static configuration defined in its local YAML file (`gateway/config/default.yml`).
+>
+> To enable dynamic configuration synchronization, you **must** deploy with the Redis profile.
 ```
 
 ### Enhanced Mode (Optional)
