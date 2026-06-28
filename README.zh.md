@@ -76,9 +76,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 # docker-compose.yml
 services:
   admin:
-    image: ghcr.io/chenzhiguo/tokenlive-admin:latest
+    image: ghcr.io/tokenlive/tokenlive-admin:latest
   gateway:
-    image: ghcr.io/chenzhiguo/tokenlive-gateway:latest
+    image: ghcr.io/tokenlive/tokenlive-gateway:latest
 ```
 
 **自定义镜像仓库**:
@@ -118,11 +118,11 @@ docker compose up -d
 ```bash
 # 构建 Admin
 cd ../tokenlive-admin
-docker build -t ghcr.io/chenzhiguo/tokenlive-admin:latest .
+docker build -t ghcr.io/tokenlive/tokenlive-admin:latest .
 
 # 构建 Gateway
 cd ../tokenlive-gateway
-docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" -t ghcr.io/chenzhiguo/tokenlive-gateway:latest .
+docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" -t ghcr.io/tokenlive/tokenlive-gateway:latest .
 ```
 
 #### 方式三：使用 Docker Compose 构建

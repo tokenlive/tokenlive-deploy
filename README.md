@@ -76,9 +76,9 @@ By default, images from GitHub Container Registry (ghcr.io) are used:
 # docker-compose.yml
 services:
   admin:
-    image: ghcr.io/chenzhiguo/tokenlive-admin:latest
+    image: ghcr.io/tokenlive/tokenlive-admin:latest
   gateway:
-    image: ghcr.io/chenzhiguo/tokenlive-gateway:latest
+    image: ghcr.io/tokenlive/tokenlive-gateway:latest
 ```
 
 **Custom Image Registry**:
@@ -118,11 +118,11 @@ docker compose up -d
 ```bash
 # Build Admin
 cd ../tokenlive-admin
-docker build -t ghcr.io/chenzhiguo/tokenlive-admin:latest .
+docker build -t ghcr.io/tokenlive/tokenlive-admin:latest .
 
 # Build Gateway
 cd ../tokenlive-gateway
-docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" -t ghcr.io/chenzhiguo/tokenlive-gateway:latest .
+docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" -t ghcr.io/tokenlive/tokenlive-gateway:latest .
 ```
 
 #### Option 3: Using Docker Compose Build

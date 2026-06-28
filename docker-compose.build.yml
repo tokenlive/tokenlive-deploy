@@ -9,13 +9,13 @@ version: '3.8'
 
 services:
   admin:
-    image: "${REGISTRY:-ghcr.io/chenzhiguo}/tokenlive-admin:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-admin:${VERSION:-latest}"
     build:
       context: ../tokenlive-admin
       dockerfile: Dockerfile
 
   gateway:
-    image: "${REGISTRY:-ghcr.io/chenzhiguo}/tokenlive-gateway:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-gateway:${VERSION:-latest}"
     build:
       context: ../tokenlive-gateway
       dockerfile: deploy/build/Dockerfile

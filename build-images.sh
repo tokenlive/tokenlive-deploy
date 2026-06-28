@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 配置
-REGISTRY=${REGISTRY:-"ghcr.io/chenzhiguo"}
+REGISTRY=${REGISTRY:-"ghcr.io/tokenlive"}
 VERSION=${VERSION:-"latest"}
 
 # 检测项目目录

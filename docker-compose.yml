@@ -31,7 +31,7 @@ services:
 
   # Admin Console - 管理后台
   admin:
-    image: "${REGISTRY:-ghcr.io/chenzhiguo}/tokenlive-admin:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-admin:${VERSION:-latest}"
     container_name: tokenlive-admin
     restart: unless-stopped
     environment:
@@ -50,7 +50,7 @@ services:
 
   # Gateway - API 网关
   gateway:
-    image: "${REGISTRY:-ghcr.io/chenzhiguo}/tokenlive-gateway:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-gateway:${VERSION:-latest}"
     container_name: tokenlive-gateway
     restart: unless-stopped
     environment:
