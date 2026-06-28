@@ -1,0 +1,74 @@
+env: prod
+http:
+  host: 0.0.0.0
+  port: 8000
+security:
+  api_sign:
+    app_key: tokenlive
+    app_security: tokenlive_secret
+  jwt:
+    key: tokenlive_jwt_key_2024
+
+# 数据库配置 - 默认使用 SQLite
+data:
+  db:
+    user:
+      driver: sqlite
+      dsn: /data/gateway.db
+
+# Redis 配置 - 注释掉，默认使用内存模式
+# data:
+#   redis:
+#     addr: redis:6379
+#     password:
+#     db: 0
+
+# 日志配置
+log:
+  log_level: info
+  mode: console
+  encoding: console
+
+# LLM Gateway 基础配置
+llm:
+  enable_auth: false
+  enable_metrics: true
+  enable_logging: true
+  enable_active_health_check: false
+
+# OpenTelemetry 配置
+otel:
+  metrics:
+    enabled: true
+
+# 事件配置（可选 Redis）
+events:
+  enabled: false
+  # type: redis
+  # topic: aigw:events:policy
+
+# 访问日志配置
+access_log:
+  clickhouse:
+    enabled: false
+
+# ===========================================
+# 模型和 Provider 配置示例
+# 用户可以在 Admin 后台配置后同步
+# ===========================================
+models:
+  gpt-4:
+    request_types: [chat_completion]
+    endpoints:
+      - provider: openai-official
+        url: https://api.openai.com/v1
+        real_model: gpt-4
+        priority: 1
+        weight: 100
+
+providers:
+  openai-official:
+    protocol: openai
+    api_key: ${OPENAI_API_KEY:}
+    timeout: 60s
+    max_retries: 3
