@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ===========================================
 # TokenLive 一键部署
 # ===========================================
@@ -20,14 +18,22 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     environment:
-      - DOMAIN=${DOMAIN}
+      - DOMAIN=${DOMAIN:-http://}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - admin
-      - gateway
+      admin:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - tokenlive
     logging:
@@ -48,10 +54,20 @@ services:
       - STORAGE_CACHE_TYPE=memory
       - PROMETHEUS_SERVER_URL=${PROMETHEUS_SERVER_URL:-http://gateway:8000}
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
     volumes:
       - admin-data:/data
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8040/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - tokenlive
     labels:
@@ -75,9 +91,18 @@ services:
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
       - GATEWAY_CONFIG_SOURCE=${GATEWAY_CONFIG_SOURCE:-http}
       - GATEWAY_STATE_STORE=${GATEWAY_STATE_STORE:-memory}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
     volumes:
       - gateway-data:/data
       - ./gateway/config:/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8000/metrics || wget -q --spider http://127.0.0.1:8000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - tokenlive
     labels:
@@ -99,6 +124,11 @@ services:
       - redis-data:/data
     networks:
       - tokenlive
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     logging:
       driver: "json-file"
       options:

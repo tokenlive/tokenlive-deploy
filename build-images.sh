@@ -19,8 +19,8 @@ VERSION=${VERSION:-"latest"}
 
 # 检测项目目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-ADMIN_DIR=${ADMIN_DIR:-"$(cd "$SCRIPT_DIR/../tokenlive-admin" && pwd)"}
-GATEWAY_DIR=${GATEWAY_DIR:-"$(cd "$SCRIPT_DIR/../tokenlive-gateway" && pwd)"}
+ADMIN_DIR=${ADMIN_DIR:-"$SCRIPT_DIR/../tokenlive-admin"}
+GATEWAY_DIR=${GATEWAY_DIR:-"$SCRIPT_DIR/../tokenlive-gateway"}
 
 # 打印帮助
 print_help() {
@@ -88,6 +88,7 @@ verify_directories() {
             echo -e "${YELLOW}Please set ADMIN_DIR environment variable to the correct path${NC}"
             exit 1
         fi
+        ADMIN_DIR="$(cd "$ADMIN_DIR" && pwd)"
         if [ ! -f "$ADMIN_DIR/Dockerfile" ]; then
             echo -e "${RED}Admin Dockerfile not found: $ADMIN_DIR/Dockerfile${NC}"
             exit 1
@@ -101,6 +102,7 @@ verify_directories() {
             echo -e "${YELLOW}Please set GATEWAY_DIR environment variable to the correct path${NC}"
             exit 1
         fi
+        GATEWAY_DIR="$(cd "$GATEWAY_DIR" && pwd)"
         if [ ! -f "$GATEWAY_DIR/deploy/build/Dockerfile" ]; then
             echo -e "${RED}Gateway Dockerfile not found: $GATEWAY_DIR/deploy/build/Dockerfile${NC}"
             exit 1

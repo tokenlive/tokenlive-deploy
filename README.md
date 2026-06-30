@@ -8,7 +8,7 @@ This is the one-click deployment configuration for the TokenLive platform, inclu
 - **Gateway** - AI API gateway
 - **Caddy** - Unified reverse proxy (with automatic HTTPS support)
 - **Redis** (optional) - For caching and state sharing
-- **Prometheus + Grafana** (optional) - Monitoring and visualization
+- **Prometheus** (optional) - Metrics collection
 
 ---
 
@@ -148,7 +148,7 @@ HTTPS_PORT=443
 # Admin console password
 ADMIN_PASSWORD=your_secure_password
 
-# Optional: Domain (enables HTTPS)
+# Optional: Domain (enables HTTPS when set; leave empty for HTTP)
 DOMAIN=your-domain.com
 ```
 
@@ -160,16 +160,7 @@ DOMAIN=your-domain.com
 DOMAIN=your-domain.com
 ```
 
-2. Edit `caddy/Caddyfile` and uncomment the HTTPS configuration:
-
-```caddyfile
-your-domain.com {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
-}
-```
-
-3. Restart services:
+2. Restart services:
 
 ```bash
 docker compose restart
@@ -202,11 +193,13 @@ docker compose --profile with-redis up -d
 GATEWAY_CONFIG_SOURCE=redis
 GATEWAY_STATE_STORE=redis
 REDIS_ADDR=redis:6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
 
 ### Enabling Monitoring
 
-Enable Prometheus + Grafana:
+Enable Prometheus:
 
 ```bash
 docker compose --profile with-monitoring up -d
@@ -236,9 +229,9 @@ Enabling Redis provides support for:
 docker compose --profile with-redis up -d
 ```
 
-### Prometheus + Grafana (Optional)
+### Prometheus (Optional)
 
-Enable full monitoring:
+Enable metrics collection:
 
 ```bash
 docker compose --profile with-monitoring up -d
@@ -340,9 +333,9 @@ Status: ✅ Zero external dependencies, one-click start
 
 > [!WARNING]
 > **Limitations of Minimal Mode (Without Redis)**:
-> In this mode, the `Admin Console` and `Gateway API` operate independently. Because they use separate SQLite databases and have no shared state channel, any changes (such as adding models, updating endpoints, or modifying governance policies) made in the Admin Console UI **will not** be transmitted to the Gateway. The Gateway will strictly run using the static configuration defined in its local YAML file (`gateway/config/default.yml`).
+> In this mode, the `Admin Console` and `Gateway API` synchronize configuration through internal HTTP polling by default, which is suitable for lightweight single-instance deployments. Runtime state such as rate limits, circuit breakers, and token quota deductions remains in the Gateway's local memory and is not shared across multiple Gateway instances.
 >
-> To enable dynamic configuration synchronization, you **must** deploy with the Redis profile.
+> Use the Redis profile when you need shared runtime state across multiple Gateway instances and Redis-based real-time synchronization.
 ```
 
 ### Enhanced Mode (Optional)
@@ -363,7 +356,7 @@ Status: ✅ Zero external dependencies, one-click start
     └─────────┬──────────┘         └─────────┬─────────┘
               │                              │
     ┌─────────▼──────────┐         ┌─────────▼─────────┐
-    │ Prometheus/Grafana │◄────────┤     Metrics      │
+    │    Prometheus      │◄────────┤     Metrics      │
     └────────────────────┘         └────────────────────┘
 
 Status: 🚀 High performance, high availability, full monitoring
@@ -396,14 +389,6 @@ ADMIN_PASSWORD=your-secure-password
 ```env
 # .env
 DOMAIN=your-domain.com
-```
-
-```caddyfile
-# caddy/Caddyfile
-your-domain.com {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
-}
 ```
 
 ### 3. Data Backup

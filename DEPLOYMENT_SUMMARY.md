@@ -15,7 +15,7 @@
 
 ### 4. 监控方案
 - **内置监控**: Admin Dashboard 直接从 Gateway 拉取指标
-- **可选扩展**: Prometheus + Grafana（专业监控）
+- **可选扩展**: Prometheus（指标采集）
 
 ### 5. 统一入口
 - **Caddy 反向代理**: 单端口访问（HTTP/80，可选 HTTPS/443）
@@ -64,7 +64,7 @@ Status: ✅ 零外部依赖，一键启动
     └─────────┬──────────┘         └─────────┬─────────┘
               │                              │
     ┌─────────▼──────────┐         ┌─────────▼─────────┐
-    │ Prometheus/Grafana │◄────────┤     Metrics      │
+    │    Prometheus      │◄────────┤     Metrics      │
     └────────────────────┘         └────────────────────┘
 
 Status: 🚀 高性能、高可用、完整监控
@@ -116,9 +116,9 @@ chmod +x install.sh
 docker compose --profile with-redis up -d
 ```
 
-### 启用完整监控
+### 启用指标采集
 ```bash
-# 启动所有服务
+# 启动 Prometheus
 docker compose --profile with-monitoring up -d
 ```
 
@@ -175,14 +175,6 @@ ADMIN_PASSWORD=your-secure-password
 DOMAIN=your-domain.com
 ```
 
-```Caddyfile
-# caddy/Caddyfile
-your-domain.com {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
-}
-```
-
 ### 3. 数据备份
 ```bash
 # 备份数据库
@@ -212,7 +204,7 @@ services:
 ```
 
 ### 3. 监控和日志
-- 启用 Prometheus + Grafana
+- 启用 Prometheus
 - 配置日志聚合（ELK, Loki）
 - 设置告警规则
 

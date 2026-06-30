@@ -51,7 +51,7 @@ if [ ! -f .env ]; then
     echo "  - ADMIN_PASSWORD      Admin 后台密码"
     echo "  - HTTP_PORT           HTTP 端口 (默认 80)"
     echo "  - HTTPS_PORT          HTTPS 端口 (默认 443)"
-    echo "  - DOMAIN              可选：自定义域名"
+    echo "  - DOMAIN              可选：自定义域名，留空使用 HTTP"
     echo ""
     exit 0
 fi
@@ -89,8 +89,13 @@ echo -e "  ${GREEN}✓ TokenLive 部署成功！${NC}"
 echo "=========================================="
 echo ""
 echo "访问地址："
-echo "  - Admin 后台: http://localhost"
-echo "  - Gateway API: http://localhost/v1"
+if [ -n "${DOMAIN:-}" ]; then
+    echo "  - Admin 后台: https://${DOMAIN}"
+    echo "  - Gateway API: https://${DOMAIN}/v1"
+else
+    echo "  - Admin 后台: http://localhost"
+    echo "  - Gateway API: http://localhost/v1"
+fi
 echo ""
 echo "默认账号："
 echo "  - 用户名: admin"

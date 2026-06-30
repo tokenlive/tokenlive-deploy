@@ -1,13 +1,6 @@
 # Caddy 配置文件 - TokenLive
-
-# HTTP 模式（默认）
-http:// {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
+# 默认 DOMAIN=http:// 使用 HTTP；设置 DOMAIN=your-domain.com 时启用自动 HTTPS。
+{$DOMAIN} {
+	reverse_proxy /v1/* gateway:8000
+	reverse_proxy /* admin:8040
 }
-
-# 如果配置了域名，启用自动 HTTPS
-# {$DOMAIN} {
-#     reverse_proxy /v1/* gateway:8000
-#     reverse_proxy /* admin:8040
-# }

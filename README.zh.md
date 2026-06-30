@@ -8,7 +8,7 @@
 - **Gateway** - AI API 网关
 - **Caddy** - 统一反向代理（支持自动 HTTPS）
 - **Redis**（可选）- 用于缓存和状态共享
-- **Prometheus + Grafana**（可选）- 监控和可视化
+- **Prometheus**（可选）- 指标采集
 
 ---
 
@@ -148,7 +148,7 @@ HTTPS_PORT=443
 # Admin 后台密码
 ADMIN_PASSWORD=your_secure_password
 
-# 可选：域名（启用 HTTPS）
+# 可选：域名（填入后启用 HTTPS，留空使用 HTTP）
 DOMAIN=your-domain.com
 ```
 
@@ -160,16 +160,7 @@ DOMAIN=your-domain.com
 DOMAIN=your-domain.com
 ```
 
-2. 编辑 `caddy/Caddyfile` 取消 HTTPS 配置的注释：
-
-```caddyfile
-your-domain.com {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
-}
-```
-
-3. 重启服务：
+2. 重启服务：
 
 ```bash
 docker compose restart
@@ -202,11 +193,13 @@ docker compose --profile with-redis up -d
 GATEWAY_CONFIG_SOURCE=redis
 GATEWAY_STATE_STORE=redis
 REDIS_ADDR=redis:6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
 
 ### 启用监控
 
-启用 Prometheus + Grafana：
+启用 Prometheus：
 
 ```bash
 docker compose --profile with-monitoring up -d
@@ -236,9 +229,9 @@ PROMETHEUS_SERVER_URL=http://prometheus:9090
 docker compose --profile with-redis up -d
 ```
 
-### Prometheus + Grafana（可选）
+### Prometheus（可选）
 
-启用完整监控：
+启用指标采集：
 
 ```bash
 docker compose --profile with-monitoring up -d
@@ -340,9 +333,9 @@ Status: ✅ 零外部依赖，一键启动
 
 > [!WARNING]
 > **极简模式（无 Redis）的限制**：
-> 在该模式下，`Admin 后台`与 `Gateway 网关`独立运行。由于两者使用各自独立的 SQLite 数据库且无共享通道，在管理后台 UI 上所做的任何修改（如新增模型、修改端点地址、调整治理策略等）**均无法**同步给网关。网关将严格运行在静态配置模式下，仅读取本地的 YAML 配置文件（`gateway/config/default.yml`）。
+> 在该模式下，`Admin 后台`与 `Gateway 网关`默认通过内网 HTTP 轮询同步配置，适合单机轻量部署。限流、熔断及 Token 额度扣减等运行状态仍保存在网关本地内存中，无法在多网关实例之间共享。
 >
-> 若要启用动态配置热同步，**必须**使用包含 Redis 的增强模式进行部署。
+> 若要启用多实例共享状态和 Redis 实时同步，请使用包含 Redis 的增强模式部署。
 ```
 
 ### 可选增强模式
@@ -363,7 +356,7 @@ Status: ✅ 零外部依赖，一键启动
     └─────────┬──────────┘         └─────────┬─────────┘
               │                              │
     ┌─────────▼──────────┐         ┌─────────▼─────────┐
-    │ Prometheus/Grafana │◄────────┤     Metrics      │
+    │    Prometheus      │◄────────┤     Metrics      │
     └────────────────────┘         └────────────────────┘
 
 Status: 🚀 高性能、高可用、完整监控
@@ -396,14 +389,6 @@ ADMIN_PASSWORD=your-secure-password
 ```env
 # .env
 DOMAIN=your-domain.com
-```
-
-```caddyfile
-# caddy/Caddyfile
-your-domain.com {
-    reverse_proxy /v1/* gateway:8000
-    reverse_proxy /* admin:8040
-}
 ```
 
 ### 3. 数据备份

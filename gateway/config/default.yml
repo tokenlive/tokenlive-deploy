@@ -15,13 +15,10 @@ data:
     user:
       driver: sqlite
       dsn: /data/gateway.db
-
-# Redis 配置 - 注释掉，默认使用内存模式
-# data:
-#   redis:
-#     addr: redis:6379
-#     password:
-#     db: 0
+  redis:
+    addr: ${REDIS_ADDR:redis:6379}
+    password: ${REDIS_PASSWORD:}
+    db: ${REDIS_DB:0}
 
 # 日志配置
 log:
