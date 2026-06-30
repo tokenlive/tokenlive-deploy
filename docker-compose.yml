@@ -19,6 +19,8 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
+    environment:
+      - DOMAIN=${DOMAIN}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -28,6 +30,11 @@ services:
       - gateway
     networks:
       - tokenlive
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   # Admin Console - 管理后台
   admin:
@@ -36,9 +43,10 @@ services:
     restart: unless-stopped
     environment:
       - ROOT_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - DB_DSN=/data/admin.db
+      - DB_TYPE=${DB_TYPE:-sqlite3}
+      - DB_DSN=${DB_DSN:-/data/admin.db}
       - STORAGE_CACHE_TYPE=memory
-      - PROMETHEUS_SERVER_URL=http://gateway:8000
+      - PROMETHEUS_SERVER_URL=${PROMETHEUS_SERVER_URL:-http://gateway:8000}
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
     volumes:
       - admin-data:/data
@@ -48,6 +56,11 @@ services:
       - tokenlive
     labels:
       - "com.tokenlive.group=admin"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   # Gateway - API 网关
   gateway:
@@ -69,6 +82,11 @@ services:
       - tokenlive
     labels:
       - "com.tokenlive.group=gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   # Redis (可选 - 用 --profile with-redis 启用)
   redis:
@@ -81,6 +99,11 @@ services:
       - redis-data:/data
     networks:
       - tokenlive
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   # Prometheus (可选 - 用 --profile with-monitoring 启用)
   prometheus:
@@ -94,18 +117,11 @@ services:
       - prometheus-data:/prometheus
     networks:
       - tokenlive
-
-  # Grafana (可选 - 用 --profile with-monitoring 启用)
-  grafana:
-    image: grafana/grafana:latest
-    container_name: tokenlive-grafana
-    restart: unless-stopped
-    profiles:
-      - with-monitoring
-    volumes:
-      - grafana-data:/var/lib/grafana
-    networks:
-      - tokenlive
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
 # 数据卷
 volumes:
@@ -115,7 +131,6 @@ volumes:
   gateway-data:
   redis-data:
   prometheus-data:
-  grafana-data:
 
 # 网络配置
 networks:
