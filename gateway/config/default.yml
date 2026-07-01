@@ -15,10 +15,7 @@ data:
     user:
       driver: sqlite
       dsn: /data/gateway.db
-  redis:
-    addr: ${REDIS_ADDR:redis:6379}
-    password: ${REDIS_PASSWORD:}
-    db: ${REDIS_DB:0}
+
 
 # 日志配置
 log:
@@ -36,7 +33,8 @@ llm:
 # OpenTelemetry 配置
 otel:
   metrics:
-    enabled: true
+    enabled: ${OTEL_ENABLED:false}
+    endpoint: ${OTEL_ENDPOINT:}
 
 # 事件配置（可选 Redis）
 events:

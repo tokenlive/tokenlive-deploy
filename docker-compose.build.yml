@@ -10,7 +10,7 @@ services:
     image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-admin:${VERSION:-latest}"
     build:
       context: ../tokenlive-admin
-      dockerfile: Dockerfile
+      dockerfile: deploy/build/Dockerfile
 
   gateway:
     image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-gateway:${VERSION:-latest}"
