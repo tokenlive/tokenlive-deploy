@@ -54,6 +54,9 @@ services:
       - STORAGE_CACHE_TYPE=${STORAGE_CACHE_TYPE:-memory}
       - PROMETHEUS_SERVER_URL=${PROMETHEUS_SERVER_URL:-http://prometheus:9090}
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
+      - REDIS_ADDR=${REDIS_ADDR:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
     volumes:
       - admin-data:/data
     depends_on:
@@ -68,7 +71,7 @@ services:
     networks:
       - tokenlive
     labels:
-      - "com.tokenlive.group=admin"
+      - "net.tokenlive.group=admin"
     logging:
       driver: "json-file"
       options:
@@ -88,6 +91,9 @@ services:
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
       - GATEWAY_CONFIG_SOURCE=${GATEWAY_CONFIG_SOURCE:-http}
       - GATEWAY_STATE_STORE=${GATEWAY_STATE_STORE:-memory}
+      - REDIS_ADDR=${REDIS_ADDR:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
     volumes:
       - gateway-data:/data
       - ./gateway/config:/config:ro
@@ -100,7 +106,7 @@ services:
     networks:
       - tokenlive
     labels:
-      - "com.tokenlive.group=gateway"
+      - "net.tokenlive.group=gateway"
     logging:
       driver: "json-file"
       options:
