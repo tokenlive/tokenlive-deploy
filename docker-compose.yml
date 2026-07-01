@@ -50,7 +50,7 @@ services:
     environment:
       - ROOT_PASSWORD=${ADMIN_PASSWORD:-admin}
       - DB_TYPE=${DB_TYPE:-sqlite3}
-      - DB_DSN=${DB_DSN:-/data/admin.db}
+      - DB_DSN=${DB_DSN:-/data/tokenlive.db}
       - STORAGE_CACHE_TYPE=${STORAGE_CACHE_TYPE:-memory}
       - PROMETHEUS_SERVER_URL=${PROMETHEUS_SERVER_URL:-http://prometheus:9090}
       - GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-default_tokenlive_sync_secret_token_2026}
