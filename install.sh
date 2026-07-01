@@ -329,13 +329,21 @@ if [ "$UPGRADE_MODE" = true ]; then
     case "$upgrade_choice" in
         [yY][eE][sS]|[yY])
             IMAGE_SOURCE_VAL=$(grep "^IMAGE_SOURCE=" .env | cut -d= -f2-)
+            USE_LOCAL_REDIS=false
+            if grep -q "^REDIS_ADDR=" .env; then
+                REDIS_ADDR_VAL=$(grep "^REDIS_ADDR=" .env | cut -d= -f2-)
+                if [ "$REDIS_ADDR_VAL" = "redis:6379" ] || [ "$REDIS_ADDR_VAL" = "redis" ] || [[ "$REDIS_ADDR_VAL" =~ ^redis: ]]; then
+                    USE_LOCAL_REDIS=true
+                fi
+            fi
+
             COMPOSE_FILES="-f docker-compose.yml"
             if [ "$IMAGE_SOURCE_VAL" = "local" ]; then
                 COMPOSE_FILES="-f docker-compose.yml -f docker-compose.build.yml"
             fi
             
             echo -e "${YELLOW}正在停止并清理现有容器集群...${NC}"
-            if grep -q "^REDIS_ADDR=" .env; then
+            if [ "$USE_LOCAL_REDIS" = true ]; then
                 $COMPOSE_CMD --profile with-redis $COMPOSE_FILES down
             else
                 $COMPOSE_CMD $COMPOSE_FILES down
@@ -343,14 +351,14 @@ if [ "$UPGRADE_MODE" = true ]; then
             
             if [ "$IMAGE_SOURCE_VAL" = "local" ]; then
                 echo -e "${YELLOW}检测到使用本地构建，正在清理本地旧镜像产物...${NC}"
-                if grep -q "^REDIS_ADDR=" .env; then
+                if [ "$USE_LOCAL_REDIS" = true ]; then
                     $COMPOSE_CMD --profile with-redis $COMPOSE_FILES down --rmi local
                 else
                     $COMPOSE_CMD $COMPOSE_FILES down --rmi local
                 fi
                 
                 echo -e "${BLUE}正在重新编译并启动本地容器...${NC}"
-                if grep -q "^REDIS_ADDR=" .env; then
+                if [ "$USE_LOCAL_REDIS" = true ]; then
                     $COMPOSE_CMD --profile with-redis $COMPOSE_FILES up -d --build
                 else
                     $COMPOSE_CMD $COMPOSE_FILES up -d --build
@@ -365,7 +373,7 @@ if [ "$UPGRADE_MODE" = true ]; then
                 docker rmi "${REGISTRY_VAL}/tokenlive-gateway:${VERSION_VAL}" "${REGISTRY_VAL}/tokenlive-admin:${VERSION_VAL}" 2>/dev/null || true
                 
                 echo -e "${BLUE}正在拉取最新 Docker 镜像并启动...${NC}"
-                if grep -q "^REDIS_ADDR=" .env; then
+                if [ "$USE_LOCAL_REDIS" = true ]; then
                     $COMPOSE_CMD --profile with-redis pull
                     $COMPOSE_CMD --profile with-redis $COMPOSE_FILES up -d
                 else
@@ -395,6 +403,13 @@ case "$deploy_choice" in
         mkdir -p caddy gateway/config
 
         IMAGE_SOURCE_VAL=$(grep "^IMAGE_SOURCE=" .env | cut -d= -f2-)
+        USE_LOCAL_REDIS=false
+        if grep -q "^REDIS_ADDR=" .env; then
+            REDIS_ADDR_VAL=$(grep "^REDIS_ADDR=" .env | cut -d= -f2-)
+            if [ "$REDIS_ADDR_VAL" = "redis:6379" ] || [ "$REDIS_ADDR_VAL" = "redis" ] || [[ "$REDIS_ADDR_VAL" =~ ^redis: ]]; then
+                USE_LOCAL_REDIS=true
+            fi
+        fi
         
         # 拼装 docker compose 配置文件列表
         COMPOSE_FILES="-f docker-compose.yml"
@@ -408,8 +423,8 @@ case "$deploy_choice" in
             START_CMD="$COMPOSE_CMD $COMPOSE_FILES up -d --build"
         fi
 
-        if grep -q "^REDIS_ADDR=" .env; then
-            echo -e "${YELLOW}检测到启用了 Redis 配置，将包含 with-redis 配置文件运行...${NC}"
+        if [ "$USE_LOCAL_REDIS" = true ]; then
+            echo -e "${YELLOW}检测到使用本地 Redis 服务，将包含 with-redis Profile 运行...${NC}"
             START_CMD="$COMPOSE_CMD --profile with-redis $COMPOSE_FILES up -d"
             if [ "$IMAGE_SOURCE_VAL" = "local" ]; then
                 START_CMD="$COMPOSE_CMD --profile with-redis $COMPOSE_FILES up -d --build"
@@ -421,7 +436,7 @@ case "$deploy_choice" in
             echo -e "${BLUE}==========================================${NC}"
             echo -e "${BLUE}  正在拉取最新 Docker 镜像...             ${NC}"
             echo -e "${BLUE}==========================================${NC}"
-            if grep -q "^REDIS_ADDR=" .env; then
+            if [ "$USE_LOCAL_REDIS" = true ]; then
                 $COMPOSE_CMD --profile with-redis pull
             else
                 $COMPOSE_CMD pull
@@ -471,12 +486,20 @@ case "$deploy_choice" in
         echo -e "${YELLOW}部署已被用户取消。${NC}"
         echo -e "您可以随时进入 ${CYAN}${SCRIPT_DIR}${NC} 目录下运行以下命令手动完成启动："
         IMAGE_SOURCE_VAL=$(grep "^IMAGE_SOURCE=" .env | cut -d= -f2-)
+        USE_LOCAL_REDIS=false
+        if grep -q "^REDIS_ADDR=" .env; then
+            REDIS_ADDR_VAL=$(grep "^REDIS_ADDR=" .env | cut -d= -f2-)
+            if [ "$REDIS_ADDR_VAL" = "redis:6379" ] || [ "$REDIS_ADDR_VAL" = "redis" ] || [[ "$REDIS_ADDR_VAL" =~ ^redis: ]]; then
+                USE_LOCAL_REDIS=true
+            fi
+        fi
+
         COMPOSE_FILES="-f docker-compose.yml"
         if [ "$IMAGE_SOURCE_VAL" = "local" ]; then
             COMPOSE_FILES="-f docker-compose.yml -f docker-compose.build.yml"
         fi
         
-        if grep -q "^REDIS_ADDR=" .env; then
+        if [ "$USE_LOCAL_REDIS" = true ]; then
             if [ "$IMAGE_SOURCE_VAL" = "local" ]; then
                 echo -e "  ${BLUE}$COMPOSE_CMD --profile with-redis $COMPOSE_FILES up -d --build${NC}"
             else
