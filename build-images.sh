@@ -89,8 +89,8 @@ verify_directories() {
             exit 1
         fi
         ADMIN_DIR="$(cd "$ADMIN_DIR" && pwd)"
-        if [ ! -f "$ADMIN_DIR/Dockerfile" ]; then
-            echo -e "${RED}Admin Dockerfile not found: $ADMIN_DIR/Dockerfile${NC}"
+        if [ ! -f "$ADMIN_DIR/deploy/build/Dockerfile" ]; then
+            echo -e "${RED}Admin Dockerfile not found: $ADMIN_DIR/deploy/build/Dockerfile${NC}"
             exit 1
         fi
         echo -e "${BLUE}Admin directory: $ADMIN_DIR${NC}"
@@ -121,7 +121,7 @@ build_admin() {
     cd "$ADMIN_DIR"
 
     # 构建镜像
-    if ! docker build -t "${REGISTRY}/tokenlive-admin:${VERSION}" .; then
+    if ! docker build -f deploy/build/Dockerfile -t "${REGISTRY}/tokenlive-admin:${VERSION}" .; then
         echo -e "${RED}Failed to build Admin image${NC}"
         exit 1
     fi
