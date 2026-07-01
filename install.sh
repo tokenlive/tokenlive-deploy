@@ -154,6 +154,7 @@ if [ "$RECONFIGURE" = true ]; then
     DB_TYPE="sqlite3"
     DB_DSN="/data/admin.db"
     REDIS_ENABLED=false
+    STORAGE_CACHE_TYPE="memory"
     GATEWAY_SYNC_TOKEN=$RANDOM_SYNC_TOKEN
 
     if [ "$ADVANCED" = true ]; then
@@ -208,6 +209,7 @@ if [ "$RECONFIGURE" = true ]; then
         case "$redis_choice" in
             [yY][eE][sS]|[yY])
                 REDIS_ENABLED=true
+                STORAGE_CACHE_TYPE="redis"
                 read -r -p "  请输入 Redis 连接地址 (Host:Port) [默认: redis:6379]: " REDIS_ADDR
                 REDIS_ADDR=${REDIS_ADDR:-"redis:6379"}
                 read -r -s -p "  请输入 Redis 连接密码 [默认空]: " REDIS_PASSWORD
@@ -248,6 +250,7 @@ ADMIN_PASSWORD=${ADMIN_PASSWORD}
 DB_TYPE=${DB_TYPE}
 DB_DSN=${DB_DSN}
 GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN}
+STORAGE_CACHE_TYPE=${STORAGE_CACHE_TYPE}
 
 # ------------------------------
 # Gateway 核心配置
