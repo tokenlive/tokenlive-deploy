@@ -145,8 +145,11 @@ if [ "$CLEAN_IMAGES" = true ]; then
         REGISTRY_VAL="ghcr.io/tokenlive"
         VERSION_VAL="latest"
         if [ -f .env ]; then
-            REGISTRY_VAL=$(grep "^REGISTRY=" .env | cut -d= -f2- || echo "ghcr.io/tokenlive")
-            VERSION_VAL=$(grep "^VERSION=" .env | cut -d= -f2- || echo "latest")
+            VAL=$(grep "^REGISTRY=" .env | cut -d= -f2-)
+            REGISTRY_VAL=${VAL:-"ghcr.io/tokenlive"}
+            
+            VAL=$(grep "^VERSION=" .env | cut -d= -f2-)
+            VERSION_VAL=${VAL:-"latest"}
         fi
         
         echo -e "${YELLOW}正在清理远程拉取的业务镜像...${NC}"
