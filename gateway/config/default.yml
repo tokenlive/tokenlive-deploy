@@ -9,12 +9,18 @@ security:
   jwt:
     key: tokenlive_jwt_key_2024
 
-# 数据库配置 - 默认使用 SQLite
+# 数据库和 Redis 配置 - 默认使用 SQLite
 data:
   db:
     user:
       driver: sqlite
       dsn: /data/gateway.db
+  redis:
+    addr: ${REDIS_ADDR:}
+    password: ${REDIS_PASSWORD:}
+    db: ${REDIS_DB:0}
+    read_timeout: 10s
+    write_timeout: 10s
 
 
 # 日志配置
@@ -67,3 +73,8 @@ providers:
     api_key: ${OPENAI_API_KEY:}
     timeout: 60s
     max_retries: 3
+
+# 网关策略同步与状态存储配置
+gateway:
+  config_source: ${GATEWAY_CONFIG_SOURCE:http}
+  state_store: ${GATEWAY_STATE_STORE:memory}
