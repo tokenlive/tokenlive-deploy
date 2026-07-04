@@ -28,19 +28,39 @@
 
 ## 快速开始
 
-### 方式一：使用预构建镜像（推荐）
+### 方式一：一键安装（推荐）
+
+无需克隆仓库，一行命令即可完成部署：
 
 ```bash
-# 1. 下载部署文件
+curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash
+```
+
+交互式向导会引导你完成域名、端口、密码等配置。如需非交互式部署（CI/自动化场景）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash -s -- --domain api.example.com --password your-password --yes
+```
+
+也可通过环境变量传参（`TL_` 前缀）：
+
+```bash
+TL_DOMAIN=api.example.com TL_ADMIN_PASSWORD=your-password \
+  curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash
+```
+
+> 脚本会自动检测并安装 Docker（Linux），下载所需配置文件到 `~/.tokenlive` 目录。macOS 用户需先手动安装 Docker Desktop。完整参数说明见 `bash install.sh --help`。
+
+### 方式二：克隆仓库后安装
+
+```bash
 git clone https://github.com/tokenlive/tokenlive-deploy.git
 cd tokenlive-deploy
-
-# 2. 一键安装
 chmod +x install.sh
 ./install.sh
 ```
 
-### 方式二：本地构建镜像
+### 方式三：本地构建镜像
 
 ```bash
 # 1. 确保项目目录结构如下：

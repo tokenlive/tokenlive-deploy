@@ -28,19 +28,39 @@ This is the one-click deployment configuration for the TokenLive platform, inclu
 
 ## Quick Start
 
-### Option 1: Use Pre-built Images (Recommended)
+### Option 1: One-Click Install (Recommended)
+
+No need to clone the repo — deploy with a single command:
 
 ```bash
-# 1. Download deployment files
+curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash
+```
+
+An interactive wizard guides you through domain, port, and password configuration. For non-interactive deployment (CI/automation):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash -s -- --domain api.example.com --password your-password --yes
+```
+
+Or pass configuration via environment variables (`TL_` prefix):
+
+```bash
+TL_DOMAIN=api.example.com TL_ADMIN_PASSWORD=your-password \
+  curl -fsSL https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/install.sh | bash
+```
+
+> The script auto-installs Docker on Linux if missing, and downloads required config files to `~/.tokenlive`. macOS users need Docker Desktop installed first. See `bash install.sh --help` for full options.
+
+### Option 2: Clone & Install
+
+```bash
 git clone https://github.com/tokenlive/tokenlive-deploy.git
 cd tokenlive-deploy
-
-# 2. One-click install
 chmod +x install.sh
 ./install.sh
 ```
 
-### Option 2: Build Images Locally
+### Option 3: Build Images Locally
 
 ```bash
 # 1. Ensure the project directory structure is as follows:
