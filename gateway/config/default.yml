@@ -21,6 +21,11 @@ data:
     db: ${REDIS_DB:0}
     read_timeout: 10s
     write_timeout: 10s
+  clickhouse:
+    addr: ["${CLICKHOUSE_ADDR:}"]
+    database: "${CLICKHOUSE_DATABASE:tokenlive_gateway}"
+    username: "${CLICKHOUSE_USERNAME:default}"
+    password: "${CLICKHOUSE_PASSWORD:}"
 
 
 # 日志配置
@@ -51,7 +56,8 @@ events:
 # 访问日志配置
 access_log:
   clickhouse:
-    enabled: false
+    enabled: ${CLICKHOUSE_ENABLED:false}
+    database: "${CLICKHOUSE_DATABASE:tokenlive_gateway}"
 
 # ===========================================
 # 模型和 Provider 配置示例

@@ -94,6 +94,11 @@ services:
       - REDIS_ADDR=${REDIS_ADDR:-}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
+      - CLICKHOUSE_ENABLED=${CLICKHOUSE_ENABLED:-false}
+      - CLICKHOUSE_ADDR=${CLICKHOUSE_ADDR:-}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-tokenlive_gateway}
+      - CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
     volumes:
       - gateway-data:/data
       - ./gateway/config:/config:ro

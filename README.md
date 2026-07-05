@@ -217,6 +217,26 @@ REDIS_PASSWORD=
 REDIS_DB=0
 ```
 
+#### Enabling ClickHouse Access Logs
+
+ClickHouse is an optional external dependency. The deployment script only writes the connection settings and injects them into the Gateway; it does not install ClickHouse.
+
+In interactive mode, enter advanced configuration and enable it when prompted. For non-interactive deployment:
+
+```bash
+bash install.sh --clickhouse --clickhouse-addr clickhouse.example.com:9000 --clickhouse-database tokenlive_gateway --yes
+```
+
+Or add/update these values in `.env`:
+
+```env
+CLICKHOUSE_ENABLED=true
+CLICKHOUSE_ADDR=clickhouse.example.com:9000
+CLICKHOUSE_DATABASE=tokenlive_gateway
+CLICKHOUSE_USERNAME=default
+CLICKHOUSE_PASSWORD=
+```
+
 ### Enabling Monitoring
 
 Enable Prometheus:

@@ -217,6 +217,26 @@ REDIS_PASSWORD=
 REDIS_DB=0
 ```
 
+#### 启用 ClickHouse 访问日志
+
+ClickHouse 为外置可选依赖，部署脚本只生成连接配置并注入 Gateway，不会安装 ClickHouse 服务。
+
+交互式安装时进入高级配置并按提示启用；非交互部署可使用：
+
+```bash
+bash install.sh --clickhouse --clickhouse-addr clickhouse.example.com:9000 --clickhouse-database tokenlive_gateway --yes
+```
+
+或在 `.env` 中添加或更新：
+
+```env
+CLICKHOUSE_ENABLED=true
+CLICKHOUSE_ADDR=clickhouse.example.com:9000
+CLICKHOUSE_DATABASE=tokenlive_gateway
+CLICKHOUSE_USERNAME=default
+CLICKHOUSE_PASSWORD=
+```
+
 ### 启用监控
 
 启用 Prometheus：

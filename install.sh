@@ -34,6 +34,11 @@ REDIS_ENABLED=""
 REDIS_ADDR=""
 REDIS_PASSWORD=""
 REDIS_DB=""
+CLICKHOUSE_ENABLED=""
+CLICKHOUSE_ADDR=""
+CLICKHOUSE_DATABASE=""
+CLICKHOUSE_USERNAME=""
+CLICKHOUSE_PASSWORD=""
 IMAGE_SOURCE=""
 GATEWAY_SYNC_TOKEN=""
 REGISTRY=""
@@ -86,7 +91,10 @@ has_explicit_config() {
     [ -n "$DOMAIN" ] || [ -n "$HTTP_PORT" ] || [ -n "$HTTPS_PORT" ] || \
     [ -n "$ADMIN_PASSWORD" ] || [ -n "$DB_TYPE" ] || [ -n "$DB_DSN" ] || \
     [ -n "$IMAGE_SOURCE" ] || [ -n "$GATEWAY_SYNC_TOKEN" ] || \
-    [ -n "$REDIS_ADDR" ] || [ -n "$REDIS_PASSWORD" ] || [ -n "$REDIS_DB" ] || \
+    [ -n "$REDIS_ENABLED" ] || [ -n "$REDIS_ADDR" ] || \
+    [ -n "$REDIS_PASSWORD" ] || [ -n "$REDIS_DB" ] || \
+    [ -n "$CLICKHOUSE_ENABLED" ] || [ -n "$CLICKHOUSE_ADDR" ] || [ -n "$CLICKHOUSE_DATABASE" ] || \
+    [ -n "$CLICKHOUSE_USERNAME" ] || [ -n "$CLICKHOUSE_PASSWORD" ] || \
     [ -n "$REGISTRY" ] || [ -n "$VERSION" ]
 }
 
@@ -111,6 +119,11 @@ parse_args() {
             --redis-addr)    REDIS_ADDR="$2"; REDIS_ENABLED="true"; shift 2 ;;
             --redis-password) REDIS_PASSWORD="$2"; shift 2 ;;
             --redis-db)      REDIS_DB="$2"; shift 2 ;;
+            --clickhouse)     CLICKHOUSE_ENABLED="true"; shift ;;
+            --clickhouse-addr) CLICKHOUSE_ADDR="$2"; CLICKHOUSE_ENABLED="true"; shift 2 ;;
+            --clickhouse-database) CLICKHOUSE_DATABASE="$2"; shift 2 ;;
+            --clickhouse-username) CLICKHOUSE_USERNAME="$2"; shift 2 ;;
+            --clickhouse-password) CLICKHOUSE_PASSWORD="$2"; shift 2 ;;
             --install-dir)   INSTALL_DIR="$2"; shift 2 ;;
             --repo)          REPO="$2"; shift 2 ;;
             --branch)        BRANCH="$2"; shift 2 ;;
@@ -140,6 +153,11 @@ TokenLive 一键安装脚本
   --redis-addr ADDR       Redis 地址 (默认 redis:6379)
   --redis-password PASS   Redis 密码
   --redis-db N            Redis 库号
+  --clickhouse            启用外置 ClickHouse 访问日志写入
+  --clickhouse-addr ADDR  ClickHouse 地址 (启用后必填，如 clickhouse.example.com:9000)
+  --clickhouse-database DB ClickHouse 数据库名 (默认 tokenlive_gateway)
+  --clickhouse-username USER ClickHouse 用户名 (默认 default)
+  --clickhouse-password PASS ClickHouse 密码
   --sync-token TOKEN      网关同步密钥 (默认随机)
   --registry URL          镜像仓库 (默认 ghcr.io/tokenlive)
   --version VER           镜像版本 (默认 latest)
@@ -157,6 +175,8 @@ TokenLive 一键安装脚本
   TL_DOMAIN, TL_HTTP_PORT, TL_HTTPS_PORT, TL_ADMIN_PASSWORD,
   TL_DB_TYPE, TL_DB_DSN, TL_IMAGE_SOURCE, TL_GATEWAY_SYNC_TOKEN,
   TL_REDIS_ENABLED, TL_REDIS_ADDR, TL_REDIS_PASSWORD, TL_REDIS_DB,
+  TL_CLICKHOUSE_ENABLED, TL_CLICKHOUSE_ADDR, TL_CLICKHOUSE_DATABASE,
+  TL_CLICKHOUSE_USERNAME, TL_CLICKHOUSE_PASSWORD,
   TL_REGISTRY, TL_VERSION, TL_INSTALL_DIR, TL_REPO, TL_BRANCH
 EOF
                 exit 0 ;;
@@ -179,6 +199,10 @@ load_env_vars() {
     [ -z "$REDIS_ADDR" ]      && REDIS_ADDR="${TL_REDIS_ADDR:-}"
     [ -z "$REDIS_PASSWORD" ]  && REDIS_PASSWORD="${TL_REDIS_PASSWORD:-}"
     [ -z "$REDIS_DB" ]        && REDIS_DB="${TL_REDIS_DB:-}"
+    [ -z "$CLICKHOUSE_ADDR" ] && CLICKHOUSE_ADDR="${TL_CLICKHOUSE_ADDR:-}"
+    [ -z "$CLICKHOUSE_DATABASE" ] && CLICKHOUSE_DATABASE="${TL_CLICKHOUSE_DATABASE:-}"
+    [ -z "$CLICKHOUSE_USERNAME" ] && CLICKHOUSE_USERNAME="${TL_CLICKHOUSE_USERNAME:-}"
+    [ -z "$CLICKHOUSE_PASSWORD" ] && CLICKHOUSE_PASSWORD="${TL_CLICKHOUSE_PASSWORD:-}"
     [ -z "$REGISTRY" ]        && REGISTRY="${TL_REGISTRY:-}"
     [ -z "$VERSION" ]         && VERSION="${TL_VERSION:-}"
     [ -z "$INSTALL_DIR" ]     && INSTALL_DIR="${TL_INSTALL_DIR:-}"
@@ -187,6 +211,12 @@ load_env_vars() {
     # Redis 启用判断
     if [ -z "$REDIS_ENABLED" ] && [ "${TL_REDIS_ENABLED:-}" = "true" ]; then
         REDIS_ENABLED="true"
+    fi
+    if [ -z "$CLICKHOUSE_ENABLED" ] && [ "${TL_CLICKHOUSE_ENABLED:-}" = "true" ]; then
+        CLICKHOUSE_ENABLED="true"
+    fi
+    if [ -z "$CLICKHOUSE_ENABLED" ] && [ -n "$CLICKHOUSE_ADDR" ]; then
+        CLICKHOUSE_ENABLED="true"
     fi
 }
 
@@ -370,6 +400,7 @@ interactive_wizard() {
     DB_TYPE=${DB_TYPE:-sqlite3}
     DB_DSN=${DB_DSN:-/data/admin.db}
     REDIS_ENABLED=${REDIS_ENABLED:-false}
+    CLICKHOUSE_ENABLED=${CLICKHOUSE_ENABLED:-false}
     GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-$RANDOM_SYNC_TOKEN}
 
     if [ "$ADVANCED" != "true" ]; then
@@ -444,6 +475,27 @@ interactive_wizard() {
         fi
         echo ""
 
+        echo -e "${CYAN}--- 高级配置：ClickHouse 访问日志设置 ---${NC}"
+        echo "启用 ClickHouse 后，网关会将访问日志写入外置 ClickHouse；脚本只写入连接配置，不安装 ClickHouse。"
+        if [ "$CLICKHOUSE_ENABLED" != "true" ]; then
+            read -r -p "是否启用 ClickHouse 访问日志写入？ [y/N]: " clickhouse_choice
+            case "$clickhouse_choice" in
+                [yY][eE][sS]|[yY]) CLICKHOUSE_ENABLED=true ;;
+            esac
+        fi
+        if [ "$CLICKHOUSE_ENABLED" = true ]; then
+            while [ -z "$CLICKHOUSE_ADDR" ]; do
+                read -r -p "  请输入 ClickHouse 地址 (Host:Port，必填): " CLICKHOUSE_ADDR
+                [ -n "$CLICKHOUSE_ADDR" ] || echo -e "${YELLOW}  启用 ClickHouse 时必须填写可从 Gateway 容器访问的地址。${NC}"
+            done
+            [ -z "$CLICKHOUSE_DATABASE" ] && read -r -p "  请输入 ClickHouse 数据库名 [默认: tokenlive_gateway]: " CLICKHOUSE_DATABASE
+            CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-"tokenlive_gateway"}
+            [ -z "$CLICKHOUSE_USERNAME" ] && read -r -p "  请输入 ClickHouse 用户名 [默认: default]: " CLICKHOUSE_USERNAME
+            CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME:-"default"}
+            [ -z "$CLICKHOUSE_PASSWORD" ] && { read -r -s -p "  请输入 ClickHouse 密码 [默认空]: " CLICKHOUSE_PASSWORD; echo ""; }
+        fi
+        echo ""
+
         echo -e "${CYAN}--- 高级配置：网关内部同步安全设置 ---${NC}"
         [ -z "$GATEWAY_SYNC_TOKEN" ] && read -r -p "自定义网关同步密钥 (GATEWAY_SYNC_TOKEN) [直接回车使用自动生成的随机安全密钥]: " user_token
         if [ -n "${user_token:-}" ]; then
@@ -467,7 +519,14 @@ noninteractive_config() {
     GATEWAY_SYNC_TOKEN=${GATEWAY_SYNC_TOKEN:-$(generate_random_string 32)}
     REDIS_ADDR=${REDIS_ADDR:-redis:6379}
     REDIS_DB=${REDIS_DB:-0}
+    CLICKHOUSE_ENABLED=${CLICKHOUSE_ENABLED:-false}
+    if [ "$CLICKHOUSE_ENABLED" = true ]; then
+        [ -n "$CLICKHOUSE_ADDR" ] || die "启用 ClickHouse 时必须指定 --clickhouse-addr 或 TL_CLICKHOUSE_ADDR。"
+        CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-tokenlive_gateway}
+        CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME:-default}
+    fi
     # REDIS_PASSWORD 可空
+    # CLICKHOUSE_PASSWORD 可空
 }
 
 # ===========================================
@@ -535,6 +594,31 @@ EOF
     cat << EOF >> .env
 
 # ------------------------------
+# ClickHouse 访问日志配置（可选，需使用外置 ClickHouse）
+# ------------------------------
+EOF
+
+    if [ "$CLICKHOUSE_ENABLED" = true ]; then
+        cat << EOF >> .env
+CLICKHOUSE_ENABLED=true
+CLICKHOUSE_ADDR=${CLICKHOUSE_ADDR}
+CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME}
+CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+EOF
+    else
+        cat << EOF >> .env
+CLICKHOUSE_ENABLED=false
+# CLICKHOUSE_ADDR=clickhouse.example.com:9000
+# CLICKHOUSE_DATABASE=tokenlive_gateway
+# CLICKHOUSE_USERNAME=default
+# CLICKHOUSE_PASSWORD=
+EOF
+    fi
+
+    cat << EOF >> .env
+
+# ------------------------------
 # 高级系统配置
 # ------------------------------
 ADMIN_URL=http://admin:8040
@@ -572,6 +656,11 @@ show_summary() {
         echo -e "  Redis 缓存:    已启用 (${YELLOW}$(grep "^REDIS_ADDR=" .env | cut -d= -f2-)${NC})"
     else
         echo -e "  Redis 缓存:    未启用 (单机内存模式)"
+    fi
+    if grep -q "^CLICKHOUSE_ENABLED=true" .env; then
+        echo -e "  ClickHouse:    已启用 (${YELLOW}$(grep "^CLICKHOUSE_ADDR=" .env | cut -d= -f2-)${NC}, database=$(grep "^CLICKHOUSE_DATABASE=" .env | cut -d= -f2-))"
+    else
+        echo -e "  ClickHouse:    未启用"
     fi
     echo -e "  管理员账号:    admin"
     echo -e "  管理员密码:    ${YELLOW}$(grep "^ADMIN_PASSWORD=" .env | cut -d= -f2-)${NC} (请务必牢记)"
