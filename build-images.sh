@@ -121,7 +121,7 @@ build_admin() {
     cd "$ADMIN_DIR"
 
     # 构建镜像
-    if ! docker build -f deploy/build/Dockerfile -t "${REGISTRY}/tokenlive-admin:${VERSION}" .; then
+    if ! docker build --build-arg VERSION="${VERSION}" -f deploy/build/Dockerfile -t "${REGISTRY}/tokenlive-admin:${VERSION}" .; then
         echo -e "${RED}Failed to build Admin image${NC}"
         exit 1
     fi
