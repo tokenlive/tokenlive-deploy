@@ -16,7 +16,7 @@ set -uo pipefail
 
 trap 'printf "\n已取消。\n"; exit 130' INT
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.1.1"
 PROVIDER_ID="tokenlive"
 DEFAULT_GATEWAY_URL="http://127.0.0.1:2525/v1"
 BACKUP_DIRNAME="backup-tokenlive"
@@ -926,10 +926,21 @@ if [ -z "$API_KEY" ] && [ -n "$CACHED_KEY" ]; then
   info ""
   ok "检测到上次使用的 API key: ${C_B}${masked_key}${C_RST}"
   reuse_ans=''
-  read_tty reuse_ans "是否沿用上次的 API key? (回车沿用，输入 n 重新输入): "
+  read_tty reuse_ans "是否沿用上次的 API key? (回车沿用，输入 n 或直接输入新 key): "
   case "$reuse_ans" in
-    n|N|no|NO) API_KEY='' ;;
-    *) API_KEY="$CACHED_KEY" ;;
+    n|N|no|NO)
+      API_KEY=''
+      ;;
+    sk-*)
+      API_KEY="$reuse_ans"
+      ;;
+    ''|y|Y|yes|YES)
+      API_KEY="$CACHED_KEY"
+      ;;
+    *)
+      warn "无法识别输入 '$reuse_ans'，请输入 n 或以 sk- 开头的 API key。"
+      API_KEY=''
+      ;;
   esac
 fi
 
@@ -944,6 +955,10 @@ if [ -n "$API_KEY" ]; then
         ok "从 config.toml 中读取到已有 API key，跳过询问。"
       elif [ "$API_KEY" = "${CACHED_KEY:-}" ]; then
         :
+      else
+        masked_new_key=$(mask_key "$API_KEY")
+        info ""
+        ok "使用输入的 API key: ${C_B}${masked_new_key}${C_RST}"
       fi
       ;;
     *) die "API key 不是以 sk- 开头，请检查后重试（未修改任何文件）。" ;;
