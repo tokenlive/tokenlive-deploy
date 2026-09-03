@@ -16,7 +16,7 @@ set -uo pipefail
 
 trap 'printf "\n已取消。\n"; exit 130' INT
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 PROVIDER_ID="tokenlive"
 DEFAULT_GATEWAY_URL="http://127.0.0.1:2525/v1"
 BACKUP_DIRNAME="backup-tokenlive"
@@ -41,7 +41,7 @@ head1(){ printf '\n%s%s%s\n' "$C_B" "$*" "$C_RST"; }
 
 if [ $# -gt 0 ]; then
   die "本脚本不接受命令行参数。
-直接运行后按菜单选择：1 配置（拉取模型列表并写入），2 恢复默认配置。
+直接运行后按菜单选择：1 配置，2 恢复默认配置，3 清除历史配置缓存。
   $INSTALL_CMD"
 fi
 
@@ -69,6 +69,7 @@ MODELS_PATH="$CODEX_HOME_DIR/models.json"
 BACKUP_DIR="$CODEX_HOME_DIR/$BACKUP_DIRNAME"
 BACKUP_CONFIG="$BACKUP_DIR/config.toml"
 MANIFEST="$BACKUP_DIR/manifest.txt"
+CACHE_FILE="$CODEX_HOME_DIR/.tokenlive_cache"
 
 # ~ is verified to work on macOS; with a custom CODEX_HOME an absolute path is safer
 if [ -n "${CODEX_HOME:-}" ]; then
@@ -77,12 +78,91 @@ else
   CATALOG_VALUE="~/.codex/models.json"
 fi
 
+# ---------------------------------------------------------------- cache helpers
+
+save_tokenlive_cache() {
+  local gw="$1" key="$2" model="${3:-}"
+  local tmp="${CACHE_FILE}.tokenlive-tmp.$$"
+  {
+    printf 'cached_gateway_url=%s\n' "$gw"
+    printf 'cached_api_key=%s\n' "$key"
+    printf 'cached_model_slug=%s\n' "$model"
+    printf 'cached_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  } > "$tmp" 2>/dev/null || return 1
+  chmod 600 "$tmp" 2>/dev/null || true
+  mv "$tmp" "$CACHE_FILE" 2>/dev/null || return 1
+  chmod 600 "$CACHE_FILE" 2>/dev/null || true
+  return 0
+}
+
+load_tokenlive_cache() {
+  CACHED_GW=''
+  CACHED_KEY=''
+  CACHED_MODEL=''
+  [ -f "$CACHE_FILE" ] || return 1
+  local k v
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    case "$k" in
+      cached_gateway_url) CACHED_GW="$v" ;;
+      cached_api_key)     CACHED_KEY="$v" ;;
+      cached_model_slug)  CACHED_MODEL="$v" ;;
+    esac
+  done < "$CACHE_FILE"
+  return 0
+}
+
+mask_key() {
+  local key="$1"
+  local len=${#key}
+  if [ "$len" -le 8 ]; then
+    printf 'sk-****'
+  else
+    local suffix="${key: -4}"
+    printf 'sk-****%s' "$suffix"
+  fi
+}
+
+# ---------------------------------------------------------------- purge cache (menu 3)
+
+do_purge_cache() {
+  head1 "清除 TokenLive 本地历史配置缓存"
+  if [ ! -f "$CACHE_FILE" ]; then
+    info "未检测到历史配置缓存文件（${CACHE_FILE}），无需清理。"
+    exit 0
+  fi
+
+  info "将删除以下缓存文件："
+  info "  • $CACHE_FILE"
+  info ""
+  local ans=''
+  read_tty ans "确认清除历史配置缓存? 输入 y 继续，其它任意键取消: "
+  case "$ans" in
+    y|Y|yes|YES) ;;
+    *) info "已取消，未做任何修改。"; exit 0 ;;
+  esac
+
+  rm -f "$CACHE_FILE"
+  ok "历史配置缓存已清除。"
+  exit 0
+}
+
 # ---------------------------------------------------------------- restore (menu 2)
 
 do_restore() {
   head1 "恢复默认 Codex 配置（删除 tokenlive 相关配置）"
   [ -d "$BACKUP_DIR" ] || die "未找到备份目录：$BACKUP_DIR
 没有可还原的内容——可能尚未安装过，或已经还原过了。"
+
+  # 如果尚未生成缓存，尝试从当前 config.toml 中提取 TokenLive 配置并转存，防止配置丢失
+  if [ ! -f "$CACHE_FILE" ] && [ -f "$CONFIG_PATH" ]; then
+    local cur_gw cur_key cur_model
+    cur_gw=$(parse_provider_field "base_url" 2>/dev/null) || cur_gw=''
+    cur_key=$(parse_provider_field "experimental_bearer_token" 2>/dev/null) || cur_key=''
+    cur_model=$(grep -m1 "^model[[:space:]]*=" "$CONFIG_PATH" 2>/dev/null | sed 's/.*=[[:space:]]*//; s/^"//; s/"$//') || cur_model=''
+    if [ -n "$cur_gw" ] && [ -n "$cur_key" ]; then
+      save_tokenlive_cache "$cur_gw" "$cur_key" "$cur_model" || true
+    fi
+  fi
 
   local had_config=1
   if [ -f "$MANIFEST" ]; then
@@ -128,6 +208,12 @@ do_restore() {
   ok "备份目录已清理"
   info ""
   ok "还原完成，Codex 配置已回到安装前的状态。"
+  if [ -f "$CACHE_FILE" ]; then
+    info ""
+    ok "TokenLive 历史配置已保留（${CACHE_FILE}），下次配置可一键沿用。"
+    info "${C_DIM}如需彻底清除该配置记录，可再次运行本脚本选择 3。${C_RST}"
+  fi
+  info ""
   info "${C_DIM}如需再次安装：$INSTALL_CMD${C_RST}"
   exit 0
 }
@@ -482,12 +568,14 @@ pick_model() {
   local count current_model=''
   count=$(model_count)
 
-  # Try to detect current model from config.toml
+  # Try to detect current model from config.toml, or fallback to cached model
   if [ -f "$CONFIG_PATH" ]; then
     current_model=$(grep -m1 "^model[[:space:]]*=" "$CONFIG_PATH" 2>/dev/null | \
       sed 's/.*=[[:space:]]*//; s/^"//; s/"$//') || current_model=''
   fi
+  [ -z "$current_model" ] && current_model="${CACHED_MODEL:-}"
 
+  local default_choice=''
   info ""
   info "从网关获取到 ${C_B}${count}${C_RST} 个可用模型："
   info ""
@@ -495,16 +583,25 @@ pick_model() {
   while IFS= read -r slug; do
     [ -z "$slug" ] && continue
     local marker=''
-    [ -n "$current_model" ] && [ "$slug" = "$current_model" ] && marker=" ${C_DIM}(当前)${C_RST}"
+    if [ -n "$current_model" ] && [ "$slug" = "$current_model" ]; then
+      marker=" ${C_DIM}(当前/上次选择)${C_RST}"
+      default_choice="$i"
+    fi
     info "  ${C_B}${i}${C_RST}. ${slug}${marker}"
     i=$((i+1))
   done <<< "$MODEL_SLUGS"
   info ""
 
+  local prompt_msg="选择要使用的模型编号 (1-${count}): "
+  if [ -n "$default_choice" ]; then
+    prompt_msg="选择要使用的模型编号 (1-${count}，回车默认 ${default_choice}): "
+  fi
+
   local choice=''
   local attempt=0
   while [ -z "$choice" ]; do
-    read_tty choice "选择要使用的模型编号 (1-${count}): "
+    read_tty choice "$prompt_msg"
+    [ -z "$choice" ] && [ -n "$default_choice" ] && choice="$default_choice"
     if [ -n "$choice" ] && [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le "$count" ] 2>/dev/null; then
       break
     fi
@@ -678,6 +775,7 @@ PYJSON
 
   mv "$tmp_models" "$MODELS_PATH" || die "写入 models.json 失败"
   mv "$tmp" "$CONFIG_PATH" || die "写入 config.toml 失败"
+  save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" || true
   ok "config.toml 已更新：model = \"$MODEL_SLUG\""
   ok "models.json 已刷新（$(model_count) 个模型）"
   info ""
@@ -760,60 +858,92 @@ detect_client || die "未检测到 Codex CLI 或 ChatGPT 桌面客户端。
 客户端已安装但尚未运行过。请先运行一次 Codex / ChatGPT，
 或设置 CODEX_HOME 环境变量后重试。"
 
+load_tokenlive_cache || true
+
 info ""
 info "请选择要执行的操作："
 info "  ${C_B}1${C_RST}. 配置 Codex，使用 TokenLive 网关（拉取模型列表，选择模型）"
 info "  ${C_B}2${C_RST}. 恢复默认的 Codex 配置（删除 tokenlive 相关配置）"
+if [ -f "$CACHE_FILE" ]; then
+  info "  ${C_B}3${C_RST}. 清除 TokenLive 本地历史配置缓存"
+fi
 info ""
 
 CHOICE=''
 ATTEMPT=0
 while :; do
-  read_tty CHOICE "输入 1 / 2: "
+  if [ -f "$CACHE_FILE" ]; then
+    read_tty CHOICE "输入 1 / 2 / 3: "
+  else
+    read_tty CHOICE "输入 1 / 2: "
+  fi
   case "$CHOICE" in
     1|2) break ;;
+    3)
+      if [ -f "$CACHE_FILE" ]; then break; fi
+      ;;
   esac
   ATTEMPT=$((ATTEMPT+1))
   [ "$ATTEMPT" -ge 3 ] && die "无效选择，已退出（未修改任何文件）。"
-  warn "无效输入，请输入 1 或 2。"
+  warn "无效输入，请重新输入。"
 done
 
 case "$CHOICE" in
   2) do_restore ;;
+  3) do_purge_cache ;;
 esac
 
 # CHOICE=1: configure
 
 # ---------------------------------------------------------------- resolve credentials
 
-# 1. Gateway URL: env var → config.toml (fast path) → interactive (default)
+# 1. Gateway URL: env var → config.toml (fast path) → cached → interactive (default)
 GATEWAY_URL="${TOKENLIVE_GATEWAY_URL:-}"
 if [ -z "$GATEWAY_URL" ] && [ -f "$CONFIG_PATH" ]; then
   GATEWAY_URL=$(parse_provider_field "base_url" 2>/dev/null) || GATEWAY_URL=''
 fi
 if [ -z "$GATEWAY_URL" ]; then
+  prompt_gw="${CACHED_GW:-$DEFAULT_GATEWAY_URL}"
   info ""
   info "${C_DIM}TokenLive 网关地址是网关服务的 API 入口，通常形如 http://host:port/v1${C_RST}"
-  read_tty GATEWAY_URL "请输入 TokenLive 网关地址 (回车使用默认 ${DEFAULT_GATEWAY_URL}): "
-  [ -z "$GATEWAY_URL" ] && GATEWAY_URL="$DEFAULT_GATEWAY_URL"
+  if [ -n "$CACHED_GW" ]; then
+    read_tty GATEWAY_URL "请输入 TokenLive 网关地址 (回车使用上次配置 ${CACHED_GW}): "
+  else
+    read_tty GATEWAY_URL "请输入 TokenLive 网关地址 (回车使用默认 ${DEFAULT_GATEWAY_URL}): "
+  fi
+  [ -z "$GATEWAY_URL" ] && GATEWAY_URL="$prompt_gw"
 fi
 GATEWAY_URL=$(normalize_gateway_url "$GATEWAY_URL")
 
-# 2. API key: env var → config.toml (fast path) → interactive
+# 2. API key: env var → config.toml (fast path) → cached (confirmation) → interactive
 API_KEY="${TOKENLIVE_API_KEY:-}"
 if [ -z "$API_KEY" ] && [ -f "$CONFIG_PATH" ]; then
   API_KEY=$(parse_provider_field "experimental_bearer_token" 2>/dev/null) || API_KEY=''
 fi
 
+if [ -z "$API_KEY" ] && [ -n "$CACHED_KEY" ]; then
+  masked_key=$(mask_key "$CACHED_KEY")
+  info ""
+  ok "检测到上次使用的 API key: ${C_B}${masked_key}${C_RST}"
+  reuse_ans=''
+  read_tty reuse_ans "是否沿用上次的 API key? (回车沿用，输入 n 重新输入): "
+  case "$reuse_ans" in
+    n|N|no|NO) API_KEY='' ;;
+    *) API_KEY="$CACHED_KEY" ;;
+  esac
+fi
+
 if [ -n "$API_KEY" ]; then
   case "$API_KEY" in
     sk-*)
-      if [ -z "${TOKENLIVE_API_KEY:-}" ]; then
-        info ""
-        ok "从 config.toml 中读取到已有 API key，跳过询问。"
-      else
+      if [ -n "${TOKENLIVE_API_KEY:-}" ]; then
         info ""
         ok "使用环境变量 TOKENLIVE_API_KEY 提供的 API key，跳过询问。"
+      elif [ -f "$CONFIG_PATH" ] && grep -q "experimental_bearer_token" "$CONFIG_PATH" 2>/dev/null && [ "$API_KEY" != "${CACHED_KEY:-}" ]; then
+        info ""
+        ok "从 config.toml 中读取到已有 API key，跳过询问。"
+      elif [ "$API_KEY" = "${CACHED_KEY:-}" ]; then
+        :
       fi
       ;;
     *) die "API key 不是以 sk- 开头，请检查后重试（未修改任何文件）。" ;;
@@ -1232,6 +1362,7 @@ mv "$TMP_CONFIG" "$CONFIG_PATH" || die "写入 config.toml 失败"
 
 # ---------------------------------------------------------------- report
 
+save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" || true
 ok "已写入 ${MODELS_PATH}（$(model_count) 个模型）"
 ok "已更新 $CONFIG_PATH"
 
