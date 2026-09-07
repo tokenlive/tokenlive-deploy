@@ -16,7 +16,7 @@ set -uo pipefail
 
 trap 'printf "\n已取消。\n"; exit 130' INT
 
-SCRIPT_VERSION="1.1.1"
+SCRIPT_VERSION="1.1.2"
 PROVIDER_ID="tokenlive"
 DEFAULT_GATEWAY_URL="http://127.0.0.1:2525/v1"
 BACKUP_DIRNAME="backup-tokenlive"
@@ -388,11 +388,12 @@ MODEL_ENTRY_TEMPLATE=$(cat <<'ENTRY_TEMPLATE'
   "support_verbosity": true,
   "default_verbosity": "low",
   "apply_patch_tool_type": "freeform",
-  "web_search_tool_type": "text",
+  "web_search_tool_type": "text_and_image",
   "input_modalities": [
-    "text"
+    "text",
+    "image"
   ],
-  "supports_image_detail_original": false,
+  "supports_image_detail_original": true,
   "truncation_policy": {
     "mode": "tokens",
     "limit": 10000
@@ -764,6 +765,10 @@ ms=d['models']
 assert isinstance(ms,list) and len(ms)>=1, 'models must contain at least 1 entry'
 slugs={m.get('slug') for m in ms}
 assert sys.argv[2] in slugs, sys.argv[2]+' missing'
+for m in ms:
+    assert m.get('input_modalities') == ['text', 'image'], (m.get('slug') or '')+' must support image input'
+    assert m.get('supports_image_detail_original') is True, (m.get('slug') or '')+' must support original image detail'
+    assert m.get('web_search_tool_type') == 'text_and_image', (m.get('slug') or '')+' must support image search input'
 PYJSON
     then
       :
@@ -1310,6 +1315,9 @@ assert isinstance(ms,list) and len(ms)>=1, 'models must contain at least 1 entry
 slugs={m.get('slug') for m in ms}
 assert sys.argv[2] in slugs, sys.argv[2]+' missing'
 for m in ms:
+    assert m.get('input_modalities') == ['text', 'image'], (m.get('slug') or '')+' must support image input'
+    assert m.get('supports_image_detail_original') is True, (m.get('slug') or '')+' must support original image detail'
+    assert m.get('web_search_tool_type') == 'text_and_image', (m.get('slug') or '')+' must support image search input'
     if m.get('slug')==sys.argv[2]:
         assert m.get('priority')==1, 'selected model must have priority 1'
         break
