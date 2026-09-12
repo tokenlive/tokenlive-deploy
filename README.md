@@ -112,6 +112,29 @@ export VERSION=v1.0.0
 docker compose up -d
 ```
 
+### Independent Component Versions
+
+Admin and Gateway releases can be selected independently in `.env`:
+
+```env
+VERSION=v1.0.0
+ADMIN_VERSION=v1.1.0
+GATEWAY_VERSION=v1.2.0
+```
+
+Each non-empty component version takes priority over `VERSION`; an empty or missing component value falls back to `VERSION`, then `latest`. Old configurations containing only `VERSION` continue to work in both Compose files.
+
+Both scripts accept `--admin-version` and `--gateway-version`, while `--version` remains the shared image-tag fallback:
+
+```bash
+./build-images.sh --admin-version v1.1.0 --gateway-version v1.2.0
+bash install.sh --admin-version v1.1.0 --gateway-version v1.2.0 --yes
+```
+
+The installer accepts `TL_ADMIN_VERSION` / `TL_GATEWAY_VERSION` and the unprefixed version variables. For each field, precedence is CLI flag, `TL_` variable, unprefixed variable, then existing `.env`. Component pins still take priority over a shared `--version` value. A normal install preserves prior registry/image-version fields unless overridden; its existing regeneration behavior for other configuration fields is unchanged.
+
+With `--upgrade`, explicit overrides apply only to that run, and `.env` is left unchanged. Edit `.env` for a durable version change; otherwise a later Compose command will use the saved versions again. The upgrade script resolves its exact Admin/Gateway images through Compose before stopping containers and uses the same files, profile, and overrides for image removal, pull, and startup.
+
 ### Building Images Locally
 
 #### Option 1: Using the Build Script (Recommended)
@@ -152,6 +175,17 @@ docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/ser
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
+#### Image Tags vs. Runtime Build Metadata
+
+An image tag is not executable version metadata. Both local build paths default `ADMIN_BUILD_VERSION` and `GATEWAY_BUILD_VERSION` to `dev`, even when the image tag is `latest`, a branch alias, or a semantic version. To embed a known source version, set the build versions explicitly:
+
+```bash
+ADMIN_BUILD_VERSION=v1.1.0 GATEWAY_BUILD_VERSION=v1.2.0 \
+  ./build-images.sh --admin-version v1.1.0 --gateway-version v1.2.0
+```
+
+For Compose builds, put the same `ADMIN_BUILD_VERSION` / `GATEWAY_BUILD_VERSION` values in `.env`. The build script uses exported environment variables and does not load `.env` itself. `ADMIN_BUILD_KIND` / `GATEWAY_BUILD_KIND` fall back to `BUILD_KIND`, then `dev`; only a controlled release build should explicitly set `release`. Version-like tags or build versions alone do not make a local development build eligible for release comparisons. Never use `latest` or a branch alias as a build version.
+
 ---
 
 ## Configuration
@@ -171,6 +205,18 @@ ADMIN_PASSWORD=your_secure_password
 # Optional: Domain (enables HTTPS when set; leave empty for HTTP)
 DOMAIN=your-domain.com
 ```
+
+### Version Reporting and Update Checks
+
+```env
+UPDATE_CHECK_ENABLED=true
+UPDATE_CHECK_INTERVAL_SECONDS=21600
+GATEWAY_VERSION_NAMESPACE=default
+```
+
+Admin checks for updates asynchronously after startup and then every six hours by default. Setting `UPDATE_CHECK_ENABLED=false` disables both scheduled and manual external checks, but current-version display and internal Gateway reporting continue. These checks do not install updates or restart services.
+
+Use the same namespace for Admin and Gateway within one deployment. Separate deployments sharing Redis must use different namespaces to keep node observations isolated. In memory-only deployments with multiple Admin instances, each Admin displays only nodes observed by that instance.
 
 ### Enabling HTTPS
 

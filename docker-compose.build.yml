@@ -7,15 +7,20 @@
 
 services:
   admin:
-    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-admin:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-admin:${ADMIN_VERSION:-${VERSION:-latest}}"
     build:
       context: ../tokenlive-admin
       dockerfile: deploy/build/Dockerfile
+      args:
+        VERSION: "${ADMIN_BUILD_VERSION:-dev}"
+        BUILD_KIND: "${ADMIN_BUILD_KIND:-${BUILD_KIND:-dev}}"
 
   gateway:
-    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-gateway:${VERSION:-latest}"
+    image: "${REGISTRY:-ghcr.io/tokenlive}/tokenlive-gateway:${GATEWAY_VERSION:-${VERSION:-latest}}"
     build:
       context: ../tokenlive-gateway
       dockerfile: deploy/build/Dockerfile
       args:
         APP_RELATIVE_PATH: "./cmd/server"
+        VERSION: "${GATEWAY_BUILD_VERSION:-dev}"
+        BUILD_KIND: "${GATEWAY_BUILD_KIND:-${BUILD_KIND:-dev}}"

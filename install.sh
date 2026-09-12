@@ -41,8 +41,14 @@ CLICKHOUSE_USERNAME=""
 CLICKHOUSE_PASSWORD=""
 IMAGE_SOURCE=""
 GATEWAY_SYNC_TOKEN=""
-REGISTRY=""
-VERSION=""
+REGISTRY_SET="${TL_REGISTRY+x}${REGISTRY+x}"
+VERSION_SET="${TL_VERSION+x}${VERSION+x}"
+ADMIN_VERSION_SET="${TL_ADMIN_VERSION+x}${ADMIN_VERSION+x}"
+GATEWAY_VERSION_SET="${TL_GATEWAY_VERSION+x}${GATEWAY_VERSION+x}"
+REGISTRY="${TL_REGISTRY-${REGISTRY-}}"
+VERSION="${TL_VERSION-${VERSION-}}"
+ADMIN_VERSION="${TL_ADMIN_VERSION-${ADMIN_VERSION-}}"
+GATEWAY_VERSION="${TL_GATEWAY_VERSION-${GATEWAY_VERSION-}}"
 ADVANCED=""
 
 # 行为标志
@@ -95,7 +101,8 @@ has_explicit_config() {
     [ -n "$REDIS_PASSWORD" ] || [ -n "$REDIS_DB" ] || \
     [ -n "$CLICKHOUSE_ENABLED" ] || [ -n "$CLICKHOUSE_ADDR" ] || [ -n "$CLICKHOUSE_DATABASE" ] || \
     [ -n "$CLICKHOUSE_USERNAME" ] || [ -n "$CLICKHOUSE_PASSWORD" ] || \
-    [ -n "$REGISTRY" ] || [ -n "$VERSION" ]
+    [ -n "$REGISTRY" ] || [ -n "$VERSION" ] || \
+    [ -n "$ADMIN_VERSION" ] || [ -n "$GATEWAY_VERSION" ]
 }
 
 # ===========================================
@@ -113,8 +120,10 @@ parse_args() {
             --db-dsn)        DB_DSN="$2"; shift 2 ;;
             --image-source)  IMAGE_SOURCE="$2"; shift 2 ;;
             --sync-token)    GATEWAY_SYNC_TOKEN="$2"; shift 2 ;;
-            --registry)      REGISTRY="$2"; shift 2 ;;
-            --version)       VERSION="$2"; shift 2 ;;
+            --registry)      REGISTRY="$2"; REGISTRY_SET=true; shift 2 ;;
+            --version)       VERSION="$2"; VERSION_SET=true; shift 2 ;;
+            --admin-version) ADMIN_VERSION="$2"; ADMIN_VERSION_SET=true; shift 2 ;;
+            --gateway-version) GATEWAY_VERSION="$2"; GATEWAY_VERSION_SET=true; shift 2 ;;
             --redis)         REDIS_ENABLED="true"; shift ;;
             --redis-addr)    REDIS_ADDR="$2"; REDIS_ENABLED="true"; shift 2 ;;
             --redis-password) REDIS_PASSWORD="$2"; shift 2 ;;
@@ -161,6 +170,8 @@ TokenLive 一键安装脚本
   --sync-token TOKEN      网关同步密钥 (默认随机)
   --registry URL          镜像仓库 (默认 ghcr.io/tokenlive)
   --version VER           镜像版本 (默认 latest)
+  --admin-version VER     Admin 镜像版本 (优先于 --version)
+  --gateway-version VER   Gateway 镜像版本 (优先于 --version)
   --install-dir DIR       安装目录 (默认 ~/.tokenlive)
   --repo REPO             仓库地址 (默认 tokenlive/tokenlive-deploy)
   --branch BRANCH         仓库分支 (默认 main)
@@ -177,7 +188,10 @@ TokenLive 一键安装脚本
   TL_REDIS_ENABLED, TL_REDIS_ADDR, TL_REDIS_PASSWORD, TL_REDIS_DB,
   TL_CLICKHOUSE_ENABLED, TL_CLICKHOUSE_ADDR, TL_CLICKHOUSE_DATABASE,
   TL_CLICKHOUSE_USERNAME, TL_CLICKHOUSE_PASSWORD,
-  TL_REGISTRY, TL_VERSION, TL_INSTALL_DIR, TL_REPO, TL_BRANCH
+  TL_REGISTRY, TL_VERSION, TL_ADMIN_VERSION, TL_GATEWAY_VERSION,
+  TL_INSTALL_DIR, TL_REPO, TL_BRANCH
+镜像选择也接受 REGISTRY、VERSION、ADMIN_VERSION、GATEWAY_VERSION，
+优先级：命令行 > TL_ 环境变量 > 无前缀环境变量 > 已有 .env。
 EOF
                 exit 0 ;;
             *)
@@ -203,8 +217,6 @@ load_env_vars() {
     [ -z "$CLICKHOUSE_DATABASE" ] && CLICKHOUSE_DATABASE="${TL_CLICKHOUSE_DATABASE:-}"
     [ -z "$CLICKHOUSE_USERNAME" ] && CLICKHOUSE_USERNAME="${TL_CLICKHOUSE_USERNAME:-}"
     [ -z "$CLICKHOUSE_PASSWORD" ] && CLICKHOUSE_PASSWORD="${TL_CLICKHOUSE_PASSWORD:-}"
-    [ -z "$REGISTRY" ]        && REGISTRY="${TL_REGISTRY:-}"
-    [ -z "$VERSION" ]         && VERSION="${TL_VERSION:-}"
     [ -z "$INSTALL_DIR" ]     && INSTALL_DIR="${TL_INSTALL_DIR:-}"
     [ -z "$REPO" ]            && REPO="${TL_REPO:-$REPO}"
     [ -z "$BRANCH" ]          && BRANCH="${TL_BRANCH:-$BRANCH}"
@@ -218,6 +230,33 @@ load_env_vars() {
     if [ -z "$CLICKHOUSE_ENABLED" ] && [ -n "$CLICKHOUSE_ADDR" ]; then
         CLICKHOUSE_ENABLED="true"
     fi
+}
+
+# 仅导出显式镜像选择；未指定的字段继续由 Compose 从已有 .env 读取。
+export_image_overrides() {
+    local key marker
+    for key in REGISTRY VERSION ADMIN_VERSION GATEWAY_VERSION; do
+        marker="${key}_SET"
+        if [ -n "${!marker}" ]; then
+            export "$key"
+        fi
+    done
+}
+
+# 普通安装仍重新生成配置，只保留原有镜像字段（显式覆盖由 Compose 优先处理）。
+preserve_image_config() {
+    [ -f .env ] || return 0
+    local compose_cmd resolved_env key value
+    compose_cmd=$(get_compose_cmd)
+    resolved_env=$($compose_cmd --env-file .env -f docker-compose.yml config --environment) ||
+        die "无法解析已有镜像配置，未改写 .env。"
+    while IFS='=' read -r key value; do
+        case "$key" in
+            REGISTRY|VERSION|ADMIN_VERSION|GATEWAY_VERSION)
+                printf -v "$key" '%s' "$value"
+                ;;
+        esac
+    done <<< "$resolved_env"
 }
 
 # ===========================================
@@ -534,6 +573,7 @@ noninteractive_config() {
 # ===========================================
 
 generate_env() {
+    preserve_image_config
     echo -e "${BLUE}正在生成 .env 配置文件...${NC}"
 
     cat << EOF > .env
@@ -559,6 +599,8 @@ STORAGE_CACHE_TYPE=$([ "$REDIS_ENABLED" = true ] && echo "redis" || echo "memory
 # ------------------------------
 REGISTRY=${REGISTRY:-ghcr.io/tokenlive}
 VERSION=${VERSION:-latest}
+ADMIN_VERSION=${ADMIN_VERSION}
+GATEWAY_VERSION=${GATEWAY_VERSION}
 
 # ------------------------------
 # Gateway 核心配置
@@ -714,9 +756,9 @@ deploy() {
         echo -e "${BLUE}  正在拉取最新 Docker 镜像...             ${NC}"
         echo -e "${BLUE}==========================================${NC}"
         if [ "$use_local_redis" = true ]; then
-            $compose_cmd --profile with-redis pull
+            $compose_cmd --profile with-redis $compose_files pull
         else
-            $compose_cmd pull
+            $compose_cmd $compose_files pull
         fi
     fi
 
@@ -780,41 +822,38 @@ upgrade() {
         compose_files="-f docker-compose.yml -f docker-compose.build.yml"
     fi
 
-    echo -e "${YELLOW}正在停止并清理现有容器集群...${NC}"
+    local compose_args="$compose_files"
     if [ "$use_local_redis" = true ]; then
-        $compose_cmd --profile with-redis $compose_files down
-    else
-        $compose_cmd $compose_files down
+        compose_args="--profile with-redis $compose_files"
     fi
+
+    # 先解析准确的目标镜像。解析失败时不停止容器，也不猜测或删除镜像。
+    local -a core_images=()
+    if [ "$image_source" != "local" ]; then
+        local resolved_images image
+        resolved_images=$($compose_cmd $compose_args config --images admin gateway) ||
+            die "无法解析 Admin/Gateway 镜像，升级已取消。"
+        while IFS= read -r image; do
+            [ -z "$image" ] || core_images+=("$image")
+        done <<< "$resolved_images"
+        [ "${#core_images[@]}" -eq 2 ] ||
+            die "未解析到两个核心镜像，升级已取消。"
+    fi
+
+    echo -e "${YELLOW}正在停止并清理现有容器集群...${NC}"
+    $compose_cmd $compose_args down
 
     if [ "$image_source" = "local" ]; then
         echo -e "${YELLOW}检测到使用本地构建，正在清理本地旧镜像产物...${NC}"
-        if [ "$use_local_redis" = true ]; then
-            $compose_cmd --profile with-redis $compose_files down --rmi local
-        else
-            $compose_cmd $compose_files down --rmi local
-        fi
+        $compose_cmd $compose_args down --rmi local
         echo -e "${BLUE}正在重新编译并启动本地容器...${NC}"
-        if [ "$use_local_redis" = true ]; then
-            $compose_cmd --profile with-redis $compose_files up -d --build
-        else
-            $compose_cmd $compose_files up -d --build
-        fi
+        $compose_cmd $compose_args up -d --build
     else
         echo -e "${YELLOW}正在删除本地的 TokenLive 核心远程镜像...${NC}"
-        local registry_val=$(env_get REGISTRY)
-        registry_val=${registry_val:-"ghcr.io/tokenlive"}
-        local version_val=$(env_get VERSION)
-        version_val=${version_val:-"latest"}
-        docker rmi "${registry_val}/tokenlive-gateway:${version_val}" "${registry_val}/tokenlive-admin:${version_val}" 2>/dev/null || true
+        docker rmi "${core_images[@]}" 2>/dev/null || true
         echo -e "${BLUE}正在拉取最新 Docker 镜像并启动...${NC}"
-        if [ "$use_local_redis" = true ]; then
-            $compose_cmd --profile with-redis pull
-            $compose_cmd --profile with-redis $compose_files up -d
-        else
-            $compose_cmd pull
-            $compose_cmd $compose_files up -d
-        fi
+        $compose_cmd $compose_args pull
+        $compose_cmd $compose_args up -d
     fi
 
     echo -e "\n${GREEN}==========================================${NC}"
@@ -829,6 +868,7 @@ upgrade() {
 main() {
     parse_args "$@"
     load_env_vars
+    export_image_overrides
 
     echo -e "${GREEN}"
     echo "=================================================="

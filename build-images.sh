@@ -16,6 +16,9 @@ NC='\033[0m'
 # 配置
 REGISTRY=${REGISTRY:-"ghcr.io/tokenlive"}
 VERSION=${VERSION:-"latest"}
+ADMIN_VERSION=${ADMIN_VERSION:-}
+GATEWAY_VERSION=${GATEWAY_VERSION:-}
+BUILD_KIND=${BUILD_KIND:-dev}
 
 # 检测项目目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -32,7 +35,11 @@ print_help() {
     echo "  --push             构建后推送到镜像仓库"
     echo "  --registry URL     镜像仓库地址 (默认: $REGISTRY)"
     echo "  --version TAG      镜像版本 (默认: $VERSION)"
+    echo "  --admin-version TAG   Admin 镜像版本 (优先于 --version)"
+    echo "  --gateway-version TAG Gateway 镜像版本 (优先于 --version)"
     echo "  --help             显示帮助信息"
+    echo "Runtime metadata: ADMIN_BUILD_VERSION/GATEWAY_BUILD_VERSION (默认 dev)"
+    echo "Build kind: ADMIN_BUILD_KIND/GATEWAY_BUILD_KIND > BUILD_KIND > dev"
     echo ""
     echo "Examples:"
     echo "  $0                          # 构建所有镜像"
@@ -68,6 +75,14 @@ while [[ "$#" -gt 0 ]]; do
             VERSION="$2"
             shift 2
             ;;
+        --admin-version)
+            ADMIN_VERSION="$2"
+            shift 2
+            ;;
+        --gateway-version)
+            GATEWAY_VERSION="$2"
+            shift 2
+            ;;
         --help)
             print_help
             exit 0
@@ -79,6 +94,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
     esac
 done
+
+ADMIN_VERSION=${ADMIN_VERSION:-${VERSION:-latest}}
+GATEWAY_VERSION=${GATEWAY_VERSION:-${VERSION:-latest}}
 
 # 验证项目目录
 verify_directories() {
@@ -121,12 +139,12 @@ build_admin() {
     cd "$ADMIN_DIR"
 
     # 构建镜像
-    if ! docker build --build-arg VERSION="${VERSION}" -f deploy/build/Dockerfile -t "${REGISTRY}/tokenlive-admin:${VERSION}" .; then
+    if ! docker build --build-arg VERSION="${ADMIN_BUILD_VERSION:-dev}" --build-arg BUILD_KIND="${ADMIN_BUILD_KIND:-$BUILD_KIND}" -f deploy/build/Dockerfile -t "${REGISTRY}/tokenlive-admin:${ADMIN_VERSION}" .; then
         echo -e "${RED}Failed to build Admin image${NC}"
         exit 1
     fi
 
-    echo -e "${GREEN}✓ Admin image built: ${REGISTRY}/tokenlive-admin:${VERSION}${NC}"
+    echo -e "${GREEN}✓ Admin image built: ${REGISTRY}/tokenlive-admin:${ADMIN_VERSION}${NC}"
 }
 
 # 构建 Gateway 镜像
@@ -139,12 +157,12 @@ build_gateway() {
     cd "$GATEWAY_DIR"
 
     # 构建镜像
-    if ! docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" -t "${REGISTRY}/tokenlive-gateway:${VERSION}" .; then
+    if ! docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/server" --build-arg VERSION="${GATEWAY_BUILD_VERSION:-dev}" --build-arg BUILD_KIND="${GATEWAY_BUILD_KIND:-$BUILD_KIND}" -t "${REGISTRY}/tokenlive-gateway:${GATEWAY_VERSION}" .; then
         echo -e "${RED}Failed to build Gateway image${NC}"
         exit 1
     fi
 
-    echo -e "${GREEN}✓ Gateway image built: ${REGISTRY}/tokenlive-gateway:${VERSION}${NC}"
+    echo -e "${GREEN}✓ Gateway image built: ${REGISTRY}/tokenlive-gateway:${GATEWAY_VERSION}${NC}"
 }
 
 # 推送镜像
@@ -156,7 +174,7 @@ push_images() {
 
     if [ "$BUILD_ADMIN" = true ]; then
         echo -e "${BLUE}Pushing Admin image...${NC}"
-        if ! docker push "${REGISTRY}/tokenlive-admin:${VERSION}"; then
+        if ! docker push "${REGISTRY}/tokenlive-admin:${ADMIN_VERSION}"; then
             echo -e "${RED}Failed to push Admin image${NC}"
             exit 1
         fi
@@ -165,7 +183,7 @@ push_images() {
 
     if [ "$BUILD_GATEWAY" = true ]; then
         echo -e "${BLUE}Pushing Gateway image...${NC}"
-        if ! docker push "${REGISTRY}/tokenlive-gateway:${VERSION}"; then
+        if ! docker push "${REGISTRY}/tokenlive-gateway:${GATEWAY_VERSION}"; then
             echo -e "${RED}Failed to push Gateway image${NC}"
             exit 1
         fi
@@ -182,6 +200,8 @@ main() {
     echo ""
     echo -e "Registry: ${REGISTRY}"
     echo -e "Version: ${VERSION}"
+    echo -e "Admin version: ${ADMIN_VERSION}"
+    echo -e "Gateway version: ${GATEWAY_VERSION}"
 
     verify_directories
 
@@ -208,7 +228,7 @@ main() {
         echo ""
     fi
     echo "To use the built images in Docker Compose:"
-    echo "  1. Update docker-compose.yml with your image tags"
+    echo "  1. Set REGISTRY, ADMIN_VERSION and GATEWAY_VERSION in .env to the image tags above"
     echo "  2. Run: docker compose up -d"
     echo ""
 }

@@ -112,6 +112,29 @@ export VERSION=v1.0.0
 docker compose up -d
 ```
 
+### 组件独立版本
+
+Admin 与 Gateway 可在 `.env` 中独立选择发行版本：
+
+```env
+VERSION=v1.0.0
+ADMIN_VERSION=v1.1.0
+GATEWAY_VERSION=v1.2.0
+```
+
+组件版本非空时优先于 `VERSION`；为空或未设置时回退到 `VERSION`，再回退到 `latest`。两个 Compose 文件都兼容原来只配置 `VERSION` 的方式。
+
+构建和安装脚本均支持 `--admin-version`、`--gateway-version`，原有 `--version` 继续作为共享镜像标签回退值：
+
+```bash
+./build-images.sh --admin-version v1.1.0 --gateway-version v1.2.0
+bash install.sh --admin-version v1.1.0 --gateway-version v1.2.0 --yes
+```
+
+安装器接受 `TL_ADMIN_VERSION` / `TL_GATEWAY_VERSION` 以及无前缀版本环境变量。每个字段的优先级为命令行参数、`TL_` 环境变量、无前缀环境变量、已有 `.env`。组件固定版本仍优先于共享的 `--version`。普通安装在没有显式覆盖时保留原来的镜像仓库和版本字段；其他配置字段仍按原有方式重新生成。
+
+使用 `--upgrade` 时，显式覆盖仅对本次运行生效，不改写 `.env`。持久调整版本请编辑 `.env`，否则之后直接运行 Compose 时仍使用保存的版本。升级脚本会在停止容器前通过 Compose 解析准确的 Admin/Gateway 镜像；删除镜像、拉取、启动使用相同的文件、profile 和覆盖值。
+
 ### 本地构建镜像
 
 #### 方式一：使用构建脚本（推荐）
@@ -152,6 +175,17 @@ docker build -f deploy/build/Dockerfile --build-arg APP_RELATIVE_PATH="./cmd/ser
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
+#### 镜像标签与程序构建元数据
+
+镜像标签不等于可执行程序的版本。两个本地构建入口的 `ADMIN_BUILD_VERSION`、`GATEWAY_BUILD_VERSION` 都默认 `dev`，即使镜像标签是 `latest`、分支别名或语义版本号也不会自动改变。确需嵌入已知源码版本时请显式设置：
+
+```bash
+ADMIN_BUILD_VERSION=v1.1.0 GATEWAY_BUILD_VERSION=v1.2.0 \
+  ./build-images.sh --admin-version v1.1.0 --gateway-version v1.2.0
+```
+
+Compose 构建可将相同的 `ADMIN_BUILD_VERSION` / `GATEWAY_BUILD_VERSION` 写入 `.env`。构建脚本只读取已导出的环境变量，不自行加载 `.env`。`ADMIN_BUILD_KIND` / `GATEWAY_BUILD_KIND` 回退到 `BUILD_KIND`，再回退到 `dev`；只有受控正式发布构建才应显式设置 `release`。仅设置版本格式的镜像标签或构建版本，不会让本地开发构建参与正式版本比较。不要将 `latest` 或分支别名用作程序构建版本。
+
 ---
 
 ## 配置说明
@@ -171,6 +205,18 @@ ADMIN_PASSWORD=your_secure_password
 # 可选：域名（填入后启用 HTTPS，留空使用 HTTP）
 DOMAIN=your-domain.com
 ```
+
+### 版本上报与更新检查
+
+```env
+UPDATE_CHECK_ENABLED=true
+UPDATE_CHECK_INTERVAL_SECONDS=21600
+GATEWAY_VERSION_NAMESPACE=default
+```
+
+Admin 启动后异步检查一次更新，之后默认每 6 小时检查。设置 `UPDATE_CHECK_ENABLED=false` 会关闭定时和手动外部检查，但当前版本展示及 Gateway 内部上报继续运行。更新检查不会自动安装更新或重启服务。
+
+同一部署中的 Admin 与 Gateway 必须使用相同 namespace。共用 Redis 的不同部署应设置不同 namespace，避免节点观测相互混入。纯内存模式下部署多个 Admin 时，每个 Admin 只展示本实例观测到的节点。
 
 ### 启用 HTTPS
 
