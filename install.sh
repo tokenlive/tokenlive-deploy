@@ -235,12 +235,26 @@ load_env_vars() {
 # 仅导出显式镜像选择；未指定的字段继续由 Compose 从已有 .env 读取。
 export_image_overrides() {
     local key marker
+    IMAGE_OVERRIDE_ENV=()
     for key in REGISTRY VERSION ADMIN_VERSION GATEWAY_VERSION; do
         marker="${key}_SET"
         if [ -n "${!marker}" ]; then
             export "$key"
+            IMAGE_OVERRIDE_ENV+=("$key=${!key}")
         fi
     done
+}
+
+# sudo 默认清理环境；仅将显式镜像字段作为独立 argv 传入，保留空值且不执行其内容。
+run_compose() {
+    local compose_cmd="$1"
+    shift
+    if [[ "$compose_cmd" == sudo\ * ]]; then
+        compose_cmd="${compose_cmd#sudo }"
+        sudo env "${IMAGE_OVERRIDE_ENV[@]}" $compose_cmd "$@"
+    else
+        $compose_cmd "$@"
+    fi
 }
 
 # 普通安装仍重新生成配置，只保留原有镜像字段（显式覆盖由 Compose 优先处理）。
@@ -248,7 +262,7 @@ preserve_image_config() {
     [ -f .env ] || return 0
     local compose_cmd resolved_env key value
     compose_cmd=$(get_compose_cmd)
-    resolved_env=$($compose_cmd --env-file .env -f docker-compose.yml config --environment) ||
+    resolved_env=$(run_compose "$compose_cmd" --env-file .env -f docker-compose.yml config --environment) ||
         die "无法解析已有镜像配置，未改写 .env。"
     while IFS='=' read -r key value; do
         case "$key" in
@@ -738,15 +752,15 @@ deploy() {
         compose_files="-f docker-compose.yml -f docker-compose.build.yml"
     fi
 
-    local start_cmd="$compose_cmd $compose_files up -d"
+    local start_args="$compose_files up -d"
     if [ "$image_source" = "local" ]; then
-        start_cmd="$compose_cmd $compose_files up -d --build"
+        start_args="$compose_files up -d --build"
     fi
     if [ "$use_local_redis" = true ]; then
         echo -e "${YELLOW}检测到使用本地 Redis 服务，将包含 with-redis Profile 运行...${NC}"
-        start_cmd="$compose_cmd --profile with-redis $compose_files up -d"
+        start_args="--profile with-redis $compose_files up -d"
         if [ "$image_source" = "local" ]; then
-            start_cmd="$compose_cmd --profile with-redis $compose_files up -d --build"
+            start_args="--profile with-redis $compose_files up -d --build"
         fi
     fi
 
@@ -756,16 +770,16 @@ deploy() {
         echo -e "${BLUE}  正在拉取最新 Docker 镜像...             ${NC}"
         echo -e "${BLUE}==========================================${NC}"
         if [ "$use_local_redis" = true ]; then
-            $compose_cmd --profile with-redis $compose_files pull
+            run_compose "$compose_cmd" --profile with-redis $compose_files pull
         else
-            $compose_cmd $compose_files pull
+            run_compose "$compose_cmd" $compose_files pull
         fi
     fi
 
     echo -e "\n${BLUE}==========================================${NC}"
     echo -e "${BLUE}  正在启动 TokenLive 容器集群...          ${NC}"
     echo -e "${BLUE}==========================================${NC}"
-    eval "$start_cmd"
+    run_compose "$compose_cmd" $start_args
 
     echo -e "\n${GREEN}==========================================${NC}"
     echo -e "  ${GREEN}✓ TokenLive 部署成功！${NC}"
@@ -831,7 +845,7 @@ upgrade() {
     local -a core_images=()
     if [ "$image_source" != "local" ]; then
         local resolved_images image
-        resolved_images=$($compose_cmd $compose_args config --images admin gateway) ||
+        resolved_images=$(run_compose "$compose_cmd" $compose_args config --images admin gateway) ||
             die "无法解析 Admin/Gateway 镜像，升级已取消。"
         while IFS= read -r image; do
             [ -z "$image" ] || core_images+=("$image")
@@ -841,19 +855,19 @@ upgrade() {
     fi
 
     echo -e "${YELLOW}正在停止并清理现有容器集群...${NC}"
-    $compose_cmd $compose_args down
+    run_compose "$compose_cmd" $compose_args down
 
     if [ "$image_source" = "local" ]; then
         echo -e "${YELLOW}检测到使用本地构建，正在清理本地旧镜像产物...${NC}"
-        $compose_cmd $compose_args down --rmi local
+        run_compose "$compose_cmd" $compose_args down --rmi local
         echo -e "${BLUE}正在重新编译并启动本地容器...${NC}"
-        $compose_cmd $compose_args up -d --build
+        run_compose "$compose_cmd" $compose_args up -d --build
     else
         echo -e "${YELLOW}正在删除本地的 TokenLive 核心远程镜像...${NC}"
-        docker rmi "${core_images[@]}" 2>/dev/null || true
+        ${DOCKER_SUDO:+sudo }docker rmi "${core_images[@]}" 2>/dev/null || true
         echo -e "${BLUE}正在拉取最新 Docker 镜像并启动...${NC}"
-        $compose_cmd $compose_args pull
-        $compose_cmd $compose_args up -d
+        run_compose "$compose_cmd" $compose_args pull
+        run_compose "$compose_cmd" $compose_args up -d
     fi
 
     echo -e "\n${GREEN}==========================================${NC}"

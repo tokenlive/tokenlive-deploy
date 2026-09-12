@@ -134,9 +134,11 @@ class ScriptVersionsTest(unittest.TestCase):
             f"#!{sys.executable}\n"
             "import json, os, subprocess, sys\n"
             "with open(os.environ['TEST_DOCKER_LOG'], 'a') as log:\n"
-            "    log.write(json.dumps({'argv': sys.argv[1:], 'env': {\n"
+            "    log.write(json.dumps({'argv': sys.argv[1:], 'via_sudo': "
+            "os.environ.get('TEST_VIA_SUDO') == '1', 'env': {\n"
             "        key: os.environ.get(key) for key in "
-            "['REGISTRY', 'VERSION', 'ADMIN_VERSION', 'GATEWAY_VERSION']}}) + '\\n')\n"
+            "['REGISTRY', 'VERSION', 'ADMIN_VERSION', 'GATEWAY_VERSION', "
+            "'UNRELATED_OVERRIDE']}}) + '\\n')\n"
             "args = sys.argv[1:]\n"
             "if args and args[0] == 'compose':\n"
             "    index = 1\n"
@@ -162,6 +164,30 @@ class ScriptVersionsTest(unittest.TestCase):
         self.install_dir.mkdir()
         for filename in ("docker-compose.yml", "docker-compose.build.yml"):
             shutil.copyfile(ROOT / filename, self.install_dir / filename)
+
+    def enable_sudo_env_reset(self):
+        sudo = self.bin / "sudo"
+        sudo.write_text(
+            f"#!{sys.executable}\n"
+            "import os, subprocess, sys\n"
+            "args = sys.argv[1:]\n"
+            "clean = {key: os.environ[key] for key in ('PATH', 'HOME', 'TEST_DOCKER_LOG') "
+            "if key in os.environ}\n"
+            "clean['TEST_VIA_SUDO'] = '1'\n"
+            "if args and args[0] == 'env':\n"
+            "    args.pop(0)\n"
+            "    while args and '=' in args[0]:\n"
+            "        key, value = args.pop(0).split('=', 1)\n"
+            "        if key not in ('REGISTRY', 'VERSION', 'ADMIN_VERSION', 'GATEWAY_VERSION'):\n"
+            "            sys.exit('non-whitelisted sudo environment')\n"
+            "        clean[key] = value\n"
+            "if not args or args.pop(0) != 'docker':\n"
+            "    sys.exit('fake sudo only permits the fake Docker executable')\n"
+            f"sys.exit(subprocess.call([{str(self.bin / 'docker')!r}, *args], env=clean))\n",
+            encoding="utf-8",
+        )
+        sudo.chmod(0o755)
+        self.env.update(DOCKER_SUDO="sudo", UNRELATED_OVERRIDE="must-not-cross-sudo")
 
     def run_script(self, script, arguments, values=None, success=True):
         env = self.env.copy()
@@ -401,6 +427,80 @@ class ScriptVersionsTest(unittest.TestCase):
                 for call in calls:
                     self.assertNotIn(call["argv"][0], ("rmi", "pull", "up"))
                     self.assertTrue(set(call["argv"]).isdisjoint(("down", "pull", "up")))
+
+    def test_sudo_upgrade_preserves_explicit_versions_and_empty_overrides(self):
+        self.enable_sudo_env_reset()
+        contents = (
+            "REGISTRY='registry.example/saved'\nVERSION='v1.0.0'\n"
+            "ADMIN_VERSION=\"v1.1.0\"\nGATEWAY_VERSION='v1.2.0'\n"
+            "REDIS_ADDR=redis:6379\nCUSTOM_SETTING=untouched\n"
+        )
+        (self.install_dir / ".env").write_text(contents)
+        calls = self.run_script("install.sh", [
+            "--upgrade", "--yes", "--registry", "registry.example/requested",
+            "--version", "v2.0.0", "--admin-version", "", "--gateway-version", "v2.2.0",
+        ])
+        prefix = ["compose", "--profile", "with-redis", "-f", "docker-compose.yml"]
+        for operation in (["config", "--images", "admin", "gateway"], ["down"], ["pull"], ["up", "-d"]):
+            call = next(call for call in calls if call["argv"] == prefix + operation)
+            self.assertTrue(call["via_sudo"])
+            self.assertEqual(call["env"], {
+                "REGISTRY": "registry.example/requested", "VERSION": "v2.0.0",
+                "ADMIN_VERSION": "", "GATEWAY_VERSION": "v2.2.0", "UNRELATED_OVERRIDE": None,
+            })
+        removals = [call for call in calls if call["argv"][0] == "rmi"]
+        self.assertEqual(len(removals), 1)
+        self.assertTrue(removals[0]["via_sudo"])
+        self.assertCountEqual(removals[0]["argv"][1:], [
+            "registry.example/requested/tokenlive-admin:v2.0.0",
+            "registry.example/requested/tokenlive-gateway:v2.2.0",
+        ])
+        self.assertEqual((self.install_dir / ".env").read_text(), contents)
+
+    def test_sudo_install_keeps_explicit_empty_and_quoted_saved_fields(self):
+        self.enable_sudo_env_reset()
+        (self.install_dir / ".env").write_text(
+            "REGISTRY='registry.example/saved'\nVERSION='v1.0.0'\n"
+            "ADMIN_VERSION=\"v1.1.0\"\nGATEWAY_VERSION='v1.2.0'\n"
+        )
+        calls = self.run_script("install.sh", [
+            "--yes", "--registry", "registry.example/requested",
+            "--version", "v2.0.0", "--admin-version", "",
+        ])
+        values = (self.install_dir / ".env").read_text()
+        self.assertIn("\nREGISTRY=registry.example/requested\n", values)
+        self.assertIn("\nVERSION=v2.0.0\n", values)
+        self.assertIn("\nADMIN_VERSION=\n", values)
+        self.assertIn("\nGATEWAY_VERSION=v1.2.0\n", values)
+        for call in calls:
+            if call["argv"][0] == "compose" and call["argv"][1:] != ["version"]:
+                self.assertTrue(call["via_sudo"])
+                self.assertEqual(call["env"]["ADMIN_VERSION"], "")
+                self.assertIsNone(call["env"]["GATEWAY_VERSION"])
+                self.assertIsNone(call["env"]["UNRELATED_OVERRIDE"])
+
+    def test_sudo_local_upgrade_keeps_only_explicit_component_override(self):
+        self.enable_sudo_env_reset()
+        contents = (
+            "IMAGE_SOURCE=local\nREDIS_ADDR=redis:6379\nVERSION='v1.0.0'\n"
+            "ADMIN_VERSION='v1.1.0'\n"
+        )
+        (self.install_dir / ".env").write_text(contents)
+        calls = self.run_script(
+            "install.sh", ["--upgrade", "--yes"], {"TL_GATEWAY_VERSION": "v2.2.0"},
+        )
+        prefix = [
+            "compose", "--profile", "with-redis", "-f", "docker-compose.yml",
+            "-f", "docker-compose.build.yml",
+        ]
+        for operation in (["down"], ["down", "--rmi", "local"], ["up", "-d", "--build"]):
+            call = next(call for call in calls if call["argv"] == prefix + operation)
+            self.assertTrue(call["via_sudo"])
+            self.assertEqual(call["env"], {
+                "REGISTRY": None, "VERSION": None, "ADMIN_VERSION": None,
+                "GATEWAY_VERSION": "v2.2.0", "UNRELATED_OVERRIDE": None,
+            })
+        self.assertEqual((self.install_dir / ".env").read_text(), contents)
 
 
 if __name__ == "__main__":
