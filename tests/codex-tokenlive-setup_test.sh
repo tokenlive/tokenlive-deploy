@@ -25,8 +25,11 @@ printf '1\n1\n' |
     CODEX_HOME="$TEST_ROOT/codex-home" \
     TOKENLIVE_GATEWAY_URL="https://gateway.example/v1" \
     TOKENLIVE_API_KEY="sk-test-key" \
+    TOKENLIVE_WIRE_API="responses" \
     PATH="$TEST_ROOT/bin:$PATH" \
     bash "$REPO_ROOT/codex-tokenlive-setup.sh" > "$TEST_ROOT/setup.out"
+
+grep -q 'wire_api = "responses"' "$TEST_ROOT/codex-home/config.toml"
 
 python3 - "$TEST_ROOT/codex-home/models.json" <<'PY'
 import json
@@ -47,8 +50,11 @@ printf '1\n2\n' |
     CODEX_HOME="$TEST_ROOT/codex-home" \
     TOKENLIVE_GATEWAY_URL="https://gateway.example/v1" \
     TOKENLIVE_API_KEY="sk-test-key" \
+    TOKENLIVE_WIRE_API="chat" \
     PATH="$TEST_ROOT/bin:$PATH" \
     bash "$REPO_ROOT/codex-tokenlive-setup.sh" > "$TEST_ROOT/refresh.out"
+
+grep -q 'wire_api = "chat"' "$TEST_ROOT/codex-home/config.toml"
 
 python3 - "$TEST_ROOT/codex-home/models.json" <<'PY'
 import json
@@ -65,4 +71,32 @@ for model in models:
     assert model["web_search_tool_type"] == "text_and_image", model["slug"]
 PY
 
-printf 'PASS: generated and refreshed TokenLive models support image input\n'
+# Test 3: interactive selection of wire_api (option 2 = chat) from clean state
+rm -rf "$TEST_ROOT/codex-home-interactive"
+mkdir -p "$TEST_ROOT/codex-home-interactive"
+
+printf '1\n2\n1\n' |
+  env \
+    CODEX_HOME="$TEST_ROOT/codex-home-interactive" \
+    TOKENLIVE_GATEWAY_URL="https://gateway.example/v1" \
+    TOKENLIVE_API_KEY="sk-test-key" \
+    PATH="$TEST_ROOT/bin:$PATH" \
+    bash "$REPO_ROOT/codex-tokenlive-setup.sh" > "$TEST_ROOT/interactive.out"
+
+grep -q 'wire_api = "chat"' "$TEST_ROOT/codex-home-interactive/config.toml"
+
+# Test 4: interactive selection of wire_api (enter for default = responses) from clean state
+rm -rf "$TEST_ROOT/codex-home-default"
+mkdir -p "$TEST_ROOT/codex-home-default"
+
+printf '1\n\n1\n' |
+  env \
+    CODEX_HOME="$TEST_ROOT/codex-home-default" \
+    TOKENLIVE_GATEWAY_URL="https://gateway.example/v1" \
+    TOKENLIVE_API_KEY="sk-test-key" \
+    PATH="$TEST_ROOT/bin:$PATH" \
+    bash "$REPO_ROOT/codex-tokenlive-setup.sh" > "$TEST_ROOT/default.out"
+
+grep -q 'wire_api = "responses"' "$TEST_ROOT/codex-home-default/config.toml"
+
+printf 'PASS: generated and refreshed TokenLive models and wire_api (responses and chat) tested successfully\n'

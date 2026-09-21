@@ -16,9 +16,10 @@ set -uo pipefail
 
 trap 'printf "\n已取消。\n"; exit 130' INT
 
-SCRIPT_VERSION="1.1.2"
+SCRIPT_VERSION="1.2.0"
 PROVIDER_ID="tokenlive"
 DEFAULT_GATEWAY_URL="http://127.0.0.1:2525/v1"
+DEFAULT_WIRE_API="responses"
 BACKUP_DIRNAME="backup-tokenlive"
 
 SCRIPT_URL="https://raw.githubusercontent.com/tokenlive/tokenlive-deploy/main/codex-tokenlive-setup.sh"
@@ -81,12 +82,13 @@ fi
 # ---------------------------------------------------------------- cache helpers
 
 save_tokenlive_cache() {
-  local gw="$1" key="$2" model="${3:-}"
+  local gw="$1" key="$2" model="${3:-}" wire="${4:-}"
   local tmp="${CACHE_FILE}.tokenlive-tmp.$$"
   {
     printf 'cached_gateway_url=%s\n' "$gw"
     printf 'cached_api_key=%s\n' "$key"
     printf 'cached_model_slug=%s\n' "$model"
+    [ -n "$wire" ] && printf 'cached_wire_api=%s\n' "$wire"
     printf 'cached_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
   } > "$tmp" 2>/dev/null || return 1
   chmod 600 "$tmp" 2>/dev/null || true
@@ -99,6 +101,7 @@ load_tokenlive_cache() {
   CACHED_GW=''
   CACHED_KEY=''
   CACHED_MODEL=''
+  CACHED_WIRE_API=''
   [ -f "$CACHE_FILE" ] || return 1
   local k v
   while IFS='=' read -r k v || [ -n "$k" ]; do
@@ -106,6 +109,7 @@ load_tokenlive_cache() {
       cached_gateway_url) CACHED_GW="$v" ;;
       cached_api_key)     CACHED_KEY="$v" ;;
       cached_model_slug)  CACHED_MODEL="$v" ;;
+      cached_wire_api)    CACHED_WIRE_API="$v" ;;
     esac
   done < "$CACHE_FILE"
   return 0
@@ -375,6 +379,68 @@ parse_provider_field() {
     _scan_line "$line"
   done < "$CONFIG_PATH"
   return 1
+}
+
+# ---------------------------------------------------------------- resolve_wire_api
+# Determine wire_api to use: env var → config.toml (if present) → cached → interactive
+resolve_wire_api() {
+  WIRE_API="${TOKENLIVE_WIRE_API:-}"
+  if [ -n "$WIRE_API" ]; then
+    case "$WIRE_API" in
+      responses|chat)
+        info ""
+        ok "使用环境变量指定通信协议 (wire_api): ${C_B}${WIRE_API}${C_RST}"
+        return 0
+        ;;
+      *)
+        die "无效的 TOKENLIVE_WIRE_API='$WIRE_API'，仅支持 'responses' 或 'chat'。"
+        ;;
+    esac
+  fi
+
+  local cur_wire=''
+  cur_wire=$(parse_provider_field "wire_api" 2>/dev/null) || cur_wire=''
+  local def_wire="${cur_wire:-${CACHED_WIRE_API:-$DEFAULT_WIRE_API}}"
+  case "$def_wire" in
+    responses|chat) ;;
+    *) def_wire="$DEFAULT_WIRE_API" ;;
+  esac
+
+  # If backup directory exists, this is a model switch path; keep current wire_api
+  if [ -d "$BACKUP_DIR" ]; then
+    WIRE_API="$def_wire"
+    return 0
+  fi
+
+  info ""
+  info "${C_DIM}TokenLive 支持 Responses API（新版协议，支持实时思维链）与 Chat API（标准 OpenAI 兼容）。${C_RST}"
+  head1 "选择 Codex 与网关通信协议 (wire_api)"
+  info "  ${C_B}1${C_RST}. responses  (推荐：新一代 Responses 协议，功能完整)"
+  info "  ${C_B}2${C_RST}. chat       (标准 OpenAI /v1/chat/completions 协议)"
+  info ""
+
+  local def_choice="1"
+  [ "$def_wire" = "chat" ] && def_choice="2"
+
+  local wire_choice=''
+  read_tty wire_choice "请选择协议编号 (1: responses / 2: chat，回车默认 ${def_choice} [${def_wire}]): "
+  case "$wire_choice" in
+    1|responses|responses_api)
+      WIRE_API="responses"
+      ;;
+    2|chat|chat_completions)
+      WIRE_API="chat"
+      ;;
+    "")
+      WIRE_API="$def_wire"
+      ;;
+    *)
+      warn "无法识别输入 '$wire_choice'，使用默认协议: $def_wire"
+      WIRE_API="$def_wire"
+      ;;
+  esac
+
+  ok "已选择通信协议 (wire_api): ${C_B}${WIRE_API}${C_RST}"
 }
 
 # ---------------------------------------------------------------- model entry template
@@ -712,16 +778,20 @@ switch_model_only() {
     i=$((i+1))
   done
 
-  # If gateway URL or API key changed, update the provider section
-  local existing_base existing_token
+  # If gateway URL, API key, or wire_api changed, update the provider section
+  local existing_base existing_token existing_wire
   existing_base=$(parse_provider_field "base_url" 2>/dev/null) || existing_base=''
   existing_token=$(parse_provider_field "experimental_bearer_token" 2>/dev/null) || existing_token=''
+  existing_wire=$(parse_provider_field "wire_api" 2>/dev/null) || existing_wire=''
 
   if [ -n "$GATEWAY_URL" ] && [ "$existing_base" != "$GATEWAY_URL" ]; then
     _replace_provider_field "$tmp" "base_url" "$GATEWAY_URL"
   fi
   if [ -n "$API_KEY" ] && [ "$existing_token" != "$API_KEY" ]; then
     _replace_provider_field "$tmp" "experimental_bearer_token" "$API_KEY"
+  fi
+  if [ -n "$WIRE_API" ] && [ "$existing_wire" != "$WIRE_API" ]; then
+    _replace_provider_field "$tmp" "wire_api" "$WIRE_API"
   fi
 
   # Validate with Python if available
@@ -780,8 +850,10 @@ PYJSON
 
   mv "$tmp_models" "$MODELS_PATH" || die "写入 models.json 失败"
   mv "$tmp" "$CONFIG_PATH" || die "写入 config.toml 失败"
-  save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" || true
-  ok "config.toml 已更新：model = \"$MODEL_SLUG\""
+  local final_wire="${WIRE_API:-$existing_wire}"
+  [ -z "$final_wire" ] && final_wire="$DEFAULT_WIRE_API"
+  save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" "$final_wire" || true
+  ok "config.toml 已更新：model = \"$MODEL_SLUG\", wire_api = \"$final_wire\""
   ok "models.json 已刷新（$(model_count) 个模型）"
   info ""
   info "如何确认已生效："
@@ -989,6 +1061,10 @@ case "$API_KEY" in
   *'"'*) die "API key 不能包含双引号。" ;;
 esac
 
+# ---------------------------------------------------------------- wire_api
+
+resolve_wire_api
+
 # ---------------------------------------------------------------- fetch models from gateway
 
 head1 "从网关拉取模型列表"
@@ -1145,18 +1221,6 @@ while [ "$IDX" -lt "$NLINES" ]; do
     if [ "$SKIP_SECTION" -eq 1 ]; then
       _scan_line "$line"; IDX=$((IDX+1)); continue
     fi
-    k=$(_key_of "$line")
-    if [ "$k" = "wire_api" ]; then
-      v=$(_val_of "$trimmed")
-      case "$v" in
-        '"chat"'*|"'chat'"*)
-          indent="${line%%[![:space:]]*}"
-          out_add "${indent}wire_api = \"responses\""
-          rep_add "修正 [$CUR_SECTION] 的 wire_api: \"chat\" → \"responses\"  ← 此版本 \"chat\" 会导致 Codex 无法启动"
-          _scan_line "$line"; IDX=$((IDX+1)); continue
-          ;;
-      esac
-    fi
     out_add "$line"
     _scan_line "$line"
     IDX=$((IDX+1))
@@ -1287,7 +1351,7 @@ fi
   printf '\n[model_providers.%s]\n' "$PROVIDER_ID"
   printf 'name = "%s"\n' "$PROVIDER_ID"
   printf 'base_url = "%s"\n' "$GATEWAY_URL"
-  printf 'wire_api = "responses"\n'
+  printf 'wire_api = "%s"\n' "$WIRE_API"
   printf 'experimental_bearer_token = "%s"\n' "$API_KEY"
 } >> "$TMP_CONFIG"
 
@@ -1341,6 +1405,7 @@ assert c.get('model'), 'model missing'
 assert c.get('model_provider'), 'model_provider missing'
 assert c.get('model_catalog_json'), 'model_catalog_json missing'
 assert 'tokenlive' in c.get('model_providers',{}), 'model_providers.tokenlive missing'
+assert c.get('model_providers',{}).get('tokenlive',{}).get('wire_api') in ('responses', 'chat'), 'valid wire_api required'
 PYTOML
   then
     VALIDATED_TOML=1
@@ -1372,6 +1437,7 @@ mv "$TMP_CONFIG" "$CONFIG_PATH" || die "写入 config.toml 失败"
   printf 'original_config_existed=%s\n' "$ORIG_EXISTED"
   printf 'model_slug=%s\n' "$MODEL_SLUG"
   printf 'gateway_url=%s\n' "$GATEWAY_URL"
+  printf 'wire_api=%s\n' "$WIRE_API"
   printf 'model_count=%s\n' "$(model_count)"
   printf 'catalog_value=%s\n' "$CATALOG_VALUE"
   printf 'codex_home=%s\n' "$CODEX_HOME_DIR"
@@ -1385,7 +1451,7 @@ mv "$TMP_CONFIG" "$CONFIG_PATH" || die "写入 config.toml 失败"
 
 # ---------------------------------------------------------------- report
 
-save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" || true
+save_tokenlive_cache "$GATEWAY_URL" "$API_KEY" "$MODEL_SLUG" "$WIRE_API" || true
 ok "已写入 ${MODELS_PATH}（$(model_count) 个模型）"
 ok "已更新 $CONFIG_PATH"
 
@@ -1409,7 +1475,7 @@ cat <<EOF
 
   [model_providers.$PROVIDER_ID]
   base_url  = "$GATEWAY_URL"
-  wire_api  = "responses"
+  wire_api  = "$WIRE_API"
 EOF
 
 head1 "校验"
